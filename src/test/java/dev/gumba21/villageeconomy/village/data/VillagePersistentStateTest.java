@@ -1,9 +1,11 @@
 package dev.gumba21.villageeconomy.village.data;
 
+import dev.gumba21.villageeconomy.MinecraftTestBootstrap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.world.level.Level;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
@@ -14,6 +16,11 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VillagePersistentStateTest {
+    @BeforeAll
+    static void bootstrapMinecraft() {
+        MinecraftTestBootstrap.initialize();
+    }
+
     @Test
     void roundTripsVillageDataAndReloadsRecordsAsUnloaded() {
         VillagePersistentState original = new VillagePersistentState();
