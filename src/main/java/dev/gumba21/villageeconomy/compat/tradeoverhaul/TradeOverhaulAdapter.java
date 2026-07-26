@@ -132,8 +132,11 @@ public final class TradeOverhaulAdapter {
                 pending.playerBalanceBefore(),
                 balanceAfter
         );
-        if (quantity <= 0
-                && pending.playerBalanceBefore().equals(balanceAfter)) {
+        if (isUncommittedNoOp(
+                quantity,
+                pending.playerBalanceBefore(),
+                balanceAfter
+        )) {
             return Optional.empty();
         }
 
@@ -206,6 +209,14 @@ public final class TradeOverhaulAdapter {
         return ItemStack.isSameItemSameTags(before, after)
                 ? after.getCount()
                 : before.getCount();
+    }
+
+    static boolean isUncommittedNoOp(
+            int quantity,
+            MarketValue balanceBefore,
+            MarketValue balanceAfter
+    ) {
+        return quantity <= 0 && balanceBefore.equals(balanceAfter);
     }
 
     static Optional<MarketValue> resolveValue(

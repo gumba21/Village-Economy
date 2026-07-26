@@ -121,6 +121,17 @@ class TradeOverhaulAdapterTest {
         );
     }
 
+    @Test
+    void failedPreviewAndCancelledPathsWithNoDeltasAreIgnored() {
+        MarketValue unchanged = MarketValue.ofBaseUnits(500L);
+
+        assertTrue(TradeOverhaulAdapter.isUncommittedNoOp(
+                0,
+                unchanged,
+                unchanged
+        ));
+    }
+
     private static VillagerCurrencyComponent componentWith(int baseUnits) {
         VillagerCurrencyComponent component = new VillagerCurrencyComponent();
         component.setTotalCopper(baseUnits);

@@ -63,6 +63,15 @@ class TradeObservationDiagnosticsTest {
         assertTrue(diagnostics.recent(10).isEmpty());
     }
 
+    @Test
+    void emptyHistoryProducesAnEmptySummary() {
+        TradeObservationSummary summary =
+                new TradeObservationDiagnostics(10).summary();
+
+        assertEquals(0L, summary.total());
+        assertTrue(summary.mostRecent().isEmpty());
+    }
+
     private static DiagnosticObservation observation(
             long time,
             ObservationStatus status

@@ -4,6 +4,7 @@ import dev.gumba21.villageeconomy.compat.trade.TradeDirection;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.RecordComponent;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -69,6 +70,18 @@ class TransactionDeduplicatorTest {
             );
         }
         assertTrue(deduplicator.size() <= 4);
+    }
+
+    @Test
+    void deduplicationKeyRetainsNoEntityReferences() {
+        for (RecordComponent component : TransactionKey.class
+                .getRecordComponents()) {
+            assertFalse(
+                    net.minecraft.world.entity.Entity.class.isAssignableFrom(
+                            component.getType()
+                    )
+            );
+        }
     }
 
     private static TransactionKey key(
