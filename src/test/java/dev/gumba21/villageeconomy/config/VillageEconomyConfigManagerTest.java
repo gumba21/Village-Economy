@@ -171,6 +171,10 @@ class VillageEconomyConfigManagerTest {
         assertTrue(manager.saveAndApply(changed));
         assertTrue(manager.getConfig().isDebugLogging());
         assertEquals(128, manager.getConfig().getVillageDetectionRadius());
+        assertTrue(manager.isVillageTrackingEnabled());
+        assertTrue(manager.isDebugLoggingEnabled());
+        assertEquals(128, manager.getVillageDetectionRadius());
+        assertEquals(1200, manager.getMarketUpdateIntervalTicks());
     }
 
     private Path configPath() {
