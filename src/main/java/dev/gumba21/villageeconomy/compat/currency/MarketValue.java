@@ -96,6 +96,12 @@ public record MarketValue(long baseUnits) implements Comparable<MarketValue> {
         return this;
     }
 
+    @Override
+    public int compareTo(MarketValue other) {
+        Objects.requireNonNull(other, "other");
+        return Long.compare(baseUnits, other.baseUnits);
+    }
+
     public static MarketValue min(MarketValue first, MarketValue second) {
         return first.compareTo(second) <= 0 ? first : second;
     }
