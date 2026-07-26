@@ -15,6 +15,10 @@ repositories {
         name = 'TerraformersMC'
         url = 'https://maven.terraformersmc.com/releases/'
     }
+    maven {
+        name = 'Shedaniel'
+        url = 'https://maven.shedaniel.me/'
+    }
 }
 
 dependencies {
@@ -22,9 +26,12 @@ dependencies {
     mappings loom.officialMojangMappings()
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    modImplementation "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
 
     modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
     modLocalRuntime "com.terraformersmc:modmenu:${project.modmenu_version}"
+
+    testImplementation "org.junit.jupiter:junit-jupiter:${project.junit_version}"
 }
 
 processResources {
@@ -43,6 +50,10 @@ java {
     withSourcesJar()
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
+}
+
+test {
+    useJUnitPlatform()
 }
 
 jar {

@@ -1,0 +1,21 @@
+{
+  "config.villageeconomy.title": "Village Economy Configuration",
+  "config.villageeconomy.category.general": "General",
+  "config.villageeconomy.apply_behavior": "Changes are saved and applied immediately. No restart or reload is required.",
+  "config.villageeconomy.enabled": "Enabled",
+  "config.villageeconomy.enabled.description": "Master switch for Village Economy systems when gameplay features are added.",
+  "config.villageeconomy.debugLogging": "Debug Logging",
+  "config.villageeconomy.debugLogging.description": "Writes additional diagnostic details to the log. Leave disabled during normal play.",
+  "config.villageeconomy.villageDetectionRadius": "Village Detection Radius",
+  "config.villageeconomy.villageDetectionRadius.description": "Maximum radius, in blocks, that future village detection will inspect.",
+  "config.villageeconomy.marketUpdateIntervalTicks": "Market Update Interval",
+  "config.villageeconomy.marketUpdateIntervalTicks.description": "Ticks between future market updates. 1,200 ticks is approximately one minute.",
+  "config.villageeconomy.priceChangeStrength": "Price Change Strength",
+  "config.villageeconomy.priceChangeStrength.description": "Controls the size of future price adjustments. 0 disables adjustment and 1 is the allowed maximum.",
+  "config.villageeconomy.minimumPriceMultiplier": "Minimum Price Multiplier",
+  "config.villageeconomy.minimumPriceMultiplier.description": "Lowest multiplier future economy calculations may apply to a price.",
+  "config.villageeconomy.maximumPriceMultiplier": "Maximum Price Multiplier",
+  "config.villageeconomy.maximumPriceMultiplier.description": "Highest multiplier future economy calculations may apply to a price.",
+  "config.villageeconomy.recoveryRate": "Recovery Rate",
+  "config.villageeconomy.recoveryRate.description": "Fraction of future market imbalance recovered during each update."
+}
