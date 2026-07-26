@@ -13,4 +13,10 @@ class VillageEconomyCommandsTest {
         assertEquals("3d 4h", VillageEconomyCommands.formatAge(273_600_000L));
         assertEquals("0s", VillageEconomyCommands.formatAge(-1L));
     }
+
+    @Test
+    void formatsMarketNumbersWithStableDecimalPlaces() {
+        assertEquals("1.00", VillageEconomyCommands.formatDecimal(1.0));
+        assertEquals("12.35", VillageEconomyCommands.formatDecimal(12.345));
+    }
 }
