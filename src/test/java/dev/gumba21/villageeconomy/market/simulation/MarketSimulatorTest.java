@@ -275,10 +275,10 @@ class MarketSimulatorTest {
     void simulateAllReportsVillageAndPriceCounts() {
         VillagePersistentState state = new VillagePersistentState();
         MarketManager manager = new MarketManager(state);
-        TrackedVillage first = village(5, 3, true, Map.of(FARMER, 1));
-        TrackedVillage second = village(15, 8, true, Map.of(FARMER, 5));
-        state.add(first);
-        state.add(second);
+        TrackedVillage first = villageAt(0, 5, 3, true, Map.of(FARMER, 1));
+        TrackedVillage second = villageAt(256, 15, 8, true, Map.of(FARMER, 5));
+        assertTrue(state.add(first));
+        assertTrue(state.add(second));
         manager.ensureMarkets(state.getVillages());
 
         MarketSimulationResult result = simulator.simulateAll(
@@ -337,6 +337,27 @@ class MarketSimulatorTest {
     ) {
         return village(
                 UUID.randomUUID(),
+                population,
+                workstations,
+                loaded,
+                professions
+        );
+    }
+
+    private TrackedVillage villageAt(
+            int x,
+            int population,
+            int workstations,
+            boolean loaded,
+            Map<ResourceLocation, Integer> professions
+    ) {
+        return new TrackedVillage(
+                UUID.randomUUID(),
+                new BlockPos(x, 0, 0),
+                Level.OVERWORLD,
+                64,
+                1_000L,
+                1_000L,
                 population,
                 workstations,
                 loaded,
