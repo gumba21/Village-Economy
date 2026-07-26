@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "villageeconomy",
+  "version": "${version}",
+  "name": "Village Economy",
+  "description": "Gives each village its own local economy while integrating with existing villager trade mods.",
+  "authors": [
+    "gumba21"
+  ],
+  "contact": {
+    "homepage": "https://github.com/gumba21/Village-Economy",
+    "sources": "https://github.com/gumba21/Village-Economy",
+    "issues": "https://github.com/gumba21/Village-Economy/issues"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "dev.gumba21.villageeconomy.VillageEconomy"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "modmenu": "*"
+  }
+}
