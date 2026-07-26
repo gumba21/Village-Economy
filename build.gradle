@@ -48,7 +48,7 @@ dependencies {
     modImplementation "io.wispforest:owo-lib:${project.owo_version}"
     modImplementation "maven.modrinth:numismatic-overhaul:${project.numismatic_overhaul_version}"
     modImplementation "curse.maven:trade-overhaul-1513819:${project.trade_overhaul_file_id}"
-    modImplementation "maven.modrinth:dynamic-villager-trades:${project.dynamic_villager_trades_version}"
+    modImplementation "maven.modrinth:baBYPjgq:${project.dynamic_villager_trades_version_id}"
 
     modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
     modLocalRuntime "com.terraformersmc:modmenu:${project.modmenu_version}"
