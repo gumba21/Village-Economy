@@ -3,6 +3,7 @@ package dev.gumba21.villageeconomy.village;
 import dev.gumba21.villageeconomy.command.VillageEconomyCommands;
 import dev.gumba21.villageeconomy.config.VillageEconomyConfigManager;
 import dev.gumba21.villageeconomy.debug.VillageEconomyDebugLogger;
+import dev.gumba21.villageeconomy.market.MarketManager;
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
 import dev.gumba21.villageeconomy.village.data.VillagePersistentState;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -38,6 +39,7 @@ public final class VillageManager {
 
     private final MinecraftServer server;
     private final VillagePersistentState state;
+    private final MarketManager marketManager;
 
     private final List<Villager> loadedVillagers = new ArrayList<>();
     private final List<DetectionCluster> clusters = new ArrayList<>();
@@ -51,6 +53,8 @@ public final class VillageManager {
     private VillageManager(MinecraftServer server, VillagePersistentState state) {
         this.server = server;
         this.state = state;
+        this.marketManager = new MarketManager(state);
+        this.marketManager.ensureMarkets(state.getVillages());
     }
 
     public static synchronized void registerEvents() {
@@ -189,6 +193,7 @@ public final class VillageManager {
                         true
                 );
                 if (state.add(village)) {
+                    marketManager.createMarket(village.getId());
                     matchedVillageIds.add(village.getId());
                     discovered++;
                     VillageEconomyDebugLogger.info(
@@ -343,6 +348,10 @@ public final class VillageManager {
 
     public Collection<TrackedVillage> getVillages() {
         return state.getVillages();
+    }
+
+    public MarketManager getMarketManager() {
+        return marketManager;
     }
 
     public Optional<TrackedVillage> findVillage(

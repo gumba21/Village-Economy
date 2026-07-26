@@ -1,6 +1,10 @@
 package dev.gumba21.villageeconomy.village.data;
 
 import dev.gumba21.villageeconomy.MinecraftTestBootstrap;
+import dev.gumba21.villageeconomy.market.MarketManager;
+import dev.gumba21.villageeconomy.market.data.MarketEntry;
+import dev.gumba21.villageeconomy.market.data.MarketState;
+import dev.gumba21.villageeconomy.market.registry.DefaultTradeGoods;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -180,6 +184,126 @@ class VillagePersistentStateTest {
                         .orElseThrow()
                         .getId()
         );
+    }
+
+    @Test
+    void roundTripsMarketDataAlongsideVillageData() {
+        VillagePersistentState original = new VillagePersistentState();
+        UUID villageId = UUID.randomUUID();
+        original.add(village(
+                villageId,
+                BlockPos.ZERO,
+                Level.OVERWORLD,
+                64,
+                1_000L,
+                1_000L,
+                3,
+                2
+        ));
+        MarketState created = new MarketManager(original).createMarket(villageId);
+
+        VillagePersistentState restored =
+                VillagePersistentState.load(original.save(new CompoundTag()));
+        MarketState loaded = restored.getMarket(villageId).orElseThrow();
+
+        assertEquals(1, restored.marketSize());
+        assertEquals(created.getVillageId(), loaded.getVillageId());
+        assertEquals(created.getCreationTimestamp(), loaded.getCreationTimestamp());
+        assertEquals(created.getLastUpdateTimestamp(), loaded.getLastUpdateTimestamp());
+        assertEquals(DefaultTradeGoods.size(), loaded.size());
+        assertEquals(
+                1.0,
+                loaded.getEntry(new net.minecraft.resources.ResourceLocation(
+                        "minecraft",
+                        "wheat"
+                )).orElseThrow().getCurrentPrice()
+        );
+    }
+
+    @Test
+    void generatesMarketDataForVersionOneVillageSaves() {
+        VillagePersistentState original = new VillagePersistentState();
+        UUID villageId = UUID.randomUUID();
+        original.add(village(
+                villageId,
+                BlockPos.ZERO,
+                Level.OVERWORLD,
+                64,
+                1_000L,
+                1_000L,
+                3,
+                2
+        ));
+        CompoundTag versionOneRoot = original.save(new CompoundTag());
+        versionOneRoot.putInt("DataVersion", 1);
+        versionOneRoot.remove("Markets");
+
+        VillagePersistentState restored = VillagePersistentState.load(versionOneRoot);
+        MarketManager manager = new MarketManager(restored);
+
+        assertFalse(manager.hasMarket(villageId));
+        assertEquals(1, manager.ensureMarkets(restored.getVillages()));
+        assertTrue(manager.hasMarket(villageId));
+        assertTrue(restored.isDirty());
+    }
+
+    @Test
+    void repairsInvalidMarketValuesAndRestoresMissingGoods() {
+        VillagePersistentState original = new VillagePersistentState();
+        UUID villageId = UUID.randomUUID();
+        original.add(village(
+                villageId,
+                BlockPos.ZERO,
+                Level.OVERWORLD,
+                64,
+                1_000L,
+                1_000L,
+                3,
+                2
+        ));
+        new MarketManager(original).createMarket(villageId);
+        CompoundTag root = original.save(new CompoundTag());
+        CompoundTag market = root.getList("Markets", net.minecraft.nbt.Tag.TAG_COMPOUND)
+                .getCompound(0);
+        ListTag entries = new ListTag();
+        CompoundTag invalidWheat = new CompoundTag();
+        invalidWheat.putString("Item", "minecraft:wheat");
+        invalidWheat.putDouble("BasePrice", -1.0);
+        invalidWheat.putDouble("CurrentPrice", Double.POSITIVE_INFINITY);
+        invalidWheat.putDouble("MinimumMultiplier", -1.0);
+        invalidWheat.putDouble("MaximumMultiplier", -1.0);
+        invalidWheat.putDouble("Supply", -5.0);
+        invalidWheat.putDouble("Demand", Double.NaN);
+        invalidWheat.putLong("LastModified", -1L);
+        entries.add(invalidWheat);
+        market.put("Entries", entries);
+
+        VillagePersistentState restored = VillagePersistentState.load(root);
+        MarketState repaired = restored.getMarket(villageId).orElseThrow();
+        MarketEntry wheat = repaired.getEntry(
+                new net.minecraft.resources.ResourceLocation("minecraft", "wheat")
+        ).orElseThrow();
+
+        assertEquals(DefaultTradeGoods.size(), repaired.size());
+        assertEquals(1.0, wheat.getBasePrice());
+        assertEquals(1.0, wheat.getCurrentPrice());
+        assertEquals(0.5, wheat.getMinimumMultiplier());
+        assertEquals(2.0, wheat.getMaximumMultiplier());
+        assertEquals(96.0, wheat.getSupply());
+        assertEquals(64.0, wheat.getDemand());
+        assertTrue(wheat.getLastModifiedTimestamp() > 0L);
+        assertTrue(restored.isDirty());
+    }
+
+    @Test
+    void savingMarketsPreservesUnrelatedRootData() {
+        VillagePersistentState state = new VillagePersistentState();
+        CompoundTag root = new CompoundTag();
+        root.putString("UnrelatedData", "keep-me");
+
+        CompoundTag saved = state.save(root);
+
+        assertEquals("keep-me", saved.getString("UnrelatedData"));
     }
 
     private CompoundTag rootWith(CompoundTag village) {
