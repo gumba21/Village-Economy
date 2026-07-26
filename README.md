@@ -22,14 +22,43 @@ Villagers should slowly recover from market changes over time.
 - Fabric Loader 0.19.3
 - Java 17
 
+## Current Status
+
+The repository currently contains the buildable project foundation only. Gameplay systems, compatibility layers, configuration, and mixins have not been implemented yet.
+
+Fabric API is a required runtime dependency. Mod Menu is supported as an optional development/runtime companion; its configuration screen will be added with the planned config system.
+
+## Building
+
+Install Java 17, then run:
+
+```bash
+./gradlew build
+```
+
+On Windows:
+
+```bat
+gradlew.bat build
+```
+
+The remapped release jar is written to:
+
+```text
+build/libs/village-economy-0.1.0.jar
+```
+
+GitHub Actions runs the same build for pull requests, pushes to `main`, and manual dispatches, then uploads the release jar as a workflow artifact.
+
 ## Repository Layout
 
-```
-src/
-.github/
-gradle/
+```text
+src/main/java/       Java sources
+src/main/resources/  Fabric metadata and resources
+gradle/wrapper/      Gradle wrapper
+.github/workflows/   Continuous integration
 ```
 
-## Status
+## License
 
-Planning / Initial project setup.
+Village Economy is available under the [MIT License](LICENSE).
