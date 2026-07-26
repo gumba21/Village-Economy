@@ -27,7 +27,10 @@
     "minecraft": "~1.20.1",
     "java": ">=17",
     "fabric-api": "*",
-    "cloth-config": ">=11.1.136"
+    "cloth-config": ">=11.1.136",
+    "numismatic-overhaul": "*",
+    "tradeoverhaul": "*",
+    "dynamicvillagertrades": "*"
   },
   "suggests": {
     "modmenu": "*"

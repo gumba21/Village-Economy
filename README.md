@@ -26,11 +26,85 @@ Villagers should slowly recover from market changes over time.
 
 The repository contains the buildable project foundation, configuration system, server-side
 village tracking, persistent per-village market data, and an invisible supply-and-demand
-simulation. Trade hooks, player transactions, compatibility layers, gameplay mixins, and other
-player-facing systems have not been implemented yet.
+simulation. It also contains the read-only trading compatibility foundation described below.
+Trade hooks, player transactions, gameplay mixins, and other player-facing systems have not been
+implemented yet.
 
-Fabric API and Cloth Config are required runtime dependencies. Mod Menu is optional and provides
-access to the graphical configuration screen when installed.
+## Required Trading Stack
+
+Village Economy intentionally has no vanilla or optional-dependency fallback. These exact versions
+were used to build and test the compatibility layer:
+
+| Mod | Tested version | Responsibility |
+| --- | --- | --- |
+| Numismatic Overhaul | `0.2.18+1.20` | Owns player currency and the bronze/silver/gold coin items. |
+| Trade Overhaul | `1.0.1` | Owns the trading interface, villager wallets, and configured prices. |
+| Dynamic Villager Trades | `1.3.1` | Generates and may extend the final merchant offers. |
+
+Fabric API and Cloth Config are also required. Mod Menu remains optional and only provides access
+to the graphical configuration screen. Numismatic Overhaul's own required libraries, including
+oωo, must be present as required by that mod.
+
+Fabric Loader resolves dependency initialization order, so there is no manual jar ordering.
+Install all required mods in the same `mods` directory. Fabric will stop with a missing-dependency
+message if any required mod is absent.
+
+### Compatibility Ownership
+
+Village Economy observes each system without treating their storage as interchangeable:
+
+- Numismatic Overhaul's player currency component is the authoritative player balance.
+- Trade Overhaul's separate villager wallet is the authoritative villager balance.
+- Trade Overhaul remains the authoritative trading UI and pricing configuration.
+- Dynamic Villager Trades controls offer generation. Village Economy observes the final generated
+  `MerchantOffer`, including its extended offer form, rather than registering competing offers.
+
+Third-party calls are isolated under `dev.gumba21.villageeconomy.compat`. Market simulation,
+persistence, and commands consume Village Economy-owned value objects instead of spreading
+third-party types throughout the project.
+
+### Normalized Monetary Values
+
+`MarketValue` is an immutable non-negative `long` measured in the smallest Numismatic denomination:
+
+```text
+1 bronze = 1 base unit
+1 silver = 100 base units
+1 gold   = 10,000 base units
+```
+
+These ratios are verified against Numismatic Overhaul 0.2.18's `CurrencyResolver`. Addition,
+subtraction, bounded rational multiplication, comparison, and clamping are overflow-safe.
+Subtraction that would produce a negative value is rejected.
+
+The existing market simulator still stores abstract double-valued prices. It does not treat those
+numbers as literal coins. The single documented conversion boundary currently maps one market
+price unit to 100 base units and uses deterministic HALF_UP rounding.
+
+Currency decomposition and composition round-trip exactly, including large `long` values.
+Materialized coin stacks are split at Numismatic Overhaul's 99-item stack size. Requests that would
+require more than 4,096 stacks return an exact structured plan and reject direct materialization
+instead of truncating the value.
+
+### Read-only Trade Classification
+
+The compatibility layer can copy and classify vanilla and Dynamic Villager Trades extended offers
+as:
+
+- player buys an item with recognized Numismatic coins
+- player sells an item for recognized Numismatic coins
+- currency exchange
+- unknown or ambiguous
+
+Emeralds and other arbitrary items are not silently treated as money. Mixed currency/item inputs,
+multiple non-currency inputs, empty offers, and unsupported shapes become `UNKNOWN`; no price or
+direction is fabricated. The compatibility layer also reads Trade Overhaul profession levels,
+villager denomination balances, configured pricing information, and available offers without
+modifying them.
+
+This foundation does **not** yet alter villager prices, intercept trades, deduct or grant player
+currency, mutate villager wallets, apply transactions to supply or demand, change restocking,
+register offers, replace screens, or add networking.
 
 ## Configuration
 
@@ -265,6 +339,21 @@ To run exactly one immediate simulation update:
 
 The command reports how many villages were updated and how many prices changed. These commands do
 not modify villager trades or any player-facing gameplay.
+
+The read-only compatibility command is also permission level 2:
+
+```text
+/villageeconomy compatibility
+```
+
+It reports Village Economy and dependency versions, initialization health, and the normalized
+gold/silver/bronze ratios. To inspect an exact conversion without changing any balance:
+
+```text
+/villageeconomy compatibility currency <baseUnits>
+```
+
+This prints the denomination breakdown and recomposed round-trip value.
 
 ## Building
 

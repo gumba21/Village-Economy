@@ -1,5 +1,6 @@
 package dev.gumba21.villageeconomy;
 
+import dev.gumba21.villageeconomy.compat.CompatibilityManager;
 import dev.gumba21.villageeconomy.config.VillageEconomyConfigManager;
 import dev.gumba21.villageeconomy.debug.VillageEconomyDebugLogger;
 import dev.gumba21.villageeconomy.village.VillageManager;
@@ -15,6 +16,7 @@ public final class VillageEconomy implements ModInitializer {
     public void onInitialize() {
         VillageEconomyConfigManager configManager = VillageEconomyConfigManager.initialize();
         VillageEconomyDebugLogger.logConfig(configManager.getConfig());
+        CompatibilityManager.initialize();
         VillageManager.registerEvents();
         LOGGER.info("Village Economy initialized.");
     }

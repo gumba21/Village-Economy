@@ -1,7 +1,13 @@
 package dev.gumba21.villageeconomy.command;
 
 import com.mojang.brigadier.Command;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.context.CommandContext;
+import dev.gumba21.villageeconomy.compat.CompatibilityManager;
+import dev.gumba21.villageeconomy.compat.CompatibilityVersions;
+import dev.gumba21.villageeconomy.compat.currency.CurrencyBreakdown;
+import dev.gumba21.villageeconomy.compat.currency.CurrencyDenominations;
+import dev.gumba21.villageeconomy.compat.currency.MarketValue;
 import dev.gumba21.villageeconomy.market.MarketManager;
 import dev.gumba21.villageeconomy.market.data.MarketEntry;
 import dev.gumba21.villageeconomy.market.data.MarketState;
@@ -37,6 +43,19 @@ public final class VillageEconomyCommands {
                                                         VillageEconomyCommands
                                                                 ::simulateMarkets
                                                 )))
+                                .then(Commands.literal("compatibility")
+                                        .executes(
+                                                VillageEconomyCommands
+                                                        ::showCompatibility
+                                        )
+                                        .then(Commands.literal("currency")
+                                                .then(Commands.argument(
+                                                        "baseUnits",
+                                                        LongArgumentType.longArg(0L)
+                                                ).executes(
+                                                        VillageEconomyCommands
+                                                                ::showCurrency
+                                                ))))
                 )
         );
     }
@@ -65,6 +84,86 @@ public final class VillageEconomyCommands {
             );
             source.sendSuccess(() -> Component.literal(line), false);
         }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int showCompatibility(
+            CommandContext<CommandSourceStack> context
+    ) {
+        CommandSourceStack source = context.getSource();
+        CompatibilityManager manager = CompatibilityManager.getInstance();
+        CompatibilityVersions versions = manager.versions();
+        source.sendSuccess(
+                () -> Component.literal(
+                        "Village Economy compatibility: "
+                                + (manager.isHealthy() ? "healthy" : "failed")
+                ),
+                false
+        );
+        source.sendSuccess(
+                () -> Component.literal(
+                        "Village Economy " + versions.villageEconomy()
+                ),
+                false
+        );
+        source.sendSuccess(
+                () -> Component.literal(
+                        "Numismatic Overhaul "
+                                + versions.numismaticOverhaul()
+                                + " detected"
+                ),
+                false
+        );
+        source.sendSuccess(
+                () -> Component.literal(
+                        "Trade Overhaul " + versions.tradeOverhaul()
+                                + " detected"
+                ),
+                false
+        );
+        source.sendSuccess(
+                () -> Component.literal(
+                        "Dynamic Villager Trades "
+                                + versions.dynamicVillagerTrades()
+                                + " detected"
+                ),
+                false
+        );
+        source.sendSuccess(
+                () -> Component.literal(
+                        "Ratios: gold=%d, silver=%d, bronze=%d base units"
+                                .formatted(
+                                        CurrencyDenominations.GOLD_VALUE,
+                                        CurrencyDenominations.SILVER_VALUE,
+                                        CurrencyDenominations.BRONZE_VALUE
+                                )
+                ),
+                false
+        );
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int showCurrency(
+            CommandContext<CommandSourceStack> context
+    ) {
+        long baseUnits = LongArgumentType.getLong(context, "baseUnits");
+        CompatibilityManager manager = CompatibilityManager.getInstance();
+        MarketValue value = MarketValue.ofBaseUnits(baseUnits);
+        CurrencyBreakdown breakdown = manager.numismatic().decompose(value);
+        MarketValue roundTrip = manager.numismatic().compose(breakdown);
+        context.getSource().sendSuccess(
+                () -> Component.literal(
+                        "%d base units = %d gold, %d silver, %d bronze; roundTrip=%d"
+                                .formatted(
+                                        baseUnits,
+                                        breakdown.gold(),
+                                        breakdown.silver(),
+                                        breakdown.bronze(),
+                                        roundTrip.baseUnits()
+                                )
+                ),
+                false
+        );
         return Command.SINGLE_SUCCESS;
     }
 
