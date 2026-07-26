@@ -60,6 +60,22 @@ public final class VillageEconomyConfigManager {
         return currentConfig.copy();
     }
 
+    public boolean isVillageTrackingEnabled() {
+        return currentConfig.isEnabled();
+    }
+
+    public boolean isDebugLoggingEnabled() {
+        return currentConfig.isDebugLogging();
+    }
+
+    public int getVillageDetectionRadius() {
+        return currentConfig.getVillageDetectionRadius();
+    }
+
+    public int getMarketUpdateIntervalTicks() {
+        return currentConfig.getMarketUpdateIntervalTicks();
+    }
+
     public synchronized ConfigLoadResult load() {
         try {
             createParentDirectory();
