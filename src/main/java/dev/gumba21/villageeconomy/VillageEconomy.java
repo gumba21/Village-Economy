@@ -1,5 +1,6 @@
 package dev.gumba21.villageeconomy;
 
+import dev.gumba21.villageeconomy.config.VillageEconomyConfigManager;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,7 @@ public final class VillageEconomy implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        VillageEconomyConfigManager.initialize();
         LOGGER.info("Village Economy initialized.");
     }
 }
