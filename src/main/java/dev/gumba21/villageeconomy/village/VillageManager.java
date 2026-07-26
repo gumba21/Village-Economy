@@ -1,5 +1,6 @@
 package dev.gumba21.villageeconomy.village;
 
+import dev.gumba21.villageeconomy.VillageEconomy;
 import dev.gumba21.villageeconomy.command.VillageEconomyCommands;
 import dev.gumba21.villageeconomy.config.VillageEconomyConfigManager;
 import dev.gumba21.villageeconomy.debug.VillageEconomyDebugLogger;
@@ -7,6 +8,9 @@ import dev.gumba21.villageeconomy.market.MarketManager;
 import dev.gumba21.villageeconomy.market.simulation.MarketSimulationResult;
 import dev.gumba21.villageeconomy.market.simulation.MarketSimulator;
 import dev.gumba21.villageeconomy.market.simulation.SimulationParameters;
+import dev.gumba21.villageeconomy.trade.mapping.VillageOwnershipIndex;
+import dev.gumba21.villageeconomy.trade.model.TradeCapture;
+import dev.gumba21.villageeconomy.trade.observation.TradeObservationService;
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
 import dev.gumba21.villageeconomy.village.data.VillagePersistentState;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -46,6 +50,9 @@ public final class VillageManager {
     private final VillagePersistentState state;
     private final MarketManager marketManager;
     private final MarketSimulator marketSimulator = new MarketSimulator();
+    private final TradeObservationService tradeObservationService;
+    private final VillageOwnershipIndex villageOwnershipIndex =
+            new VillageOwnershipIndex();
 
     private final List<Villager> loadedVillagers = new ArrayList<>();
     private final List<DetectionCluster> clusters = new ArrayList<>();
@@ -61,6 +68,11 @@ public final class VillageManager {
         this.state = state;
         this.marketManager = new MarketManager(state);
         this.marketManager.ensureMarkets(state.getVillages());
+        this.tradeObservationService = new TradeObservationService(
+                this::resolveVillageOwnership,
+                marketManager::getMarket
+        );
+        this.tradeObservationService.markHookInitialized();
     }
 
     public static synchronized void registerEvents() {
@@ -86,6 +98,9 @@ public final class VillageManager {
     private static synchronized void onServerStarted(MinecraftServer server) {
         VillagePersistentState state = VillagePersistentState.get(server);
         instance = new VillageManager(server, state);
+        VillageEconomy.LOGGER.info(
+                "Trade observation hook initialized: source=Trade Overhaul"
+        );
         VillageEconomyDebugLogger.info(
                 "Loaded {} tracked villages from persistent state",
                 state.size()
@@ -114,6 +129,8 @@ public final class VillageManager {
     private static synchronized void onServerStopped(MinecraftServer server) {
         VillageManager manager = instance;
         if (manager != null && manager.server == server) {
+            manager.tradeObservationService.shutdown();
+            manager.villageOwnershipIndex.clear();
             instance = null;
         }
     }
@@ -364,6 +381,10 @@ public final class VillageManager {
         return marketManager;
     }
 
+    public TradeObservationService getTradeObservationService() {
+        return tradeObservationService;
+    }
+
     public MarketSimulationResult simulateMarketsNow() {
         return simulateMarkets(System.currentTimeMillis());
     }
@@ -380,6 +401,17 @@ public final class VillageManager {
             BlockPos position
     ) {
         return state.findNearest(dimension, position);
+    }
+
+    private Optional<TrackedVillage> resolveVillageOwnership(
+            TradeCapture capture
+    ) {
+        return villageOwnershipIndex.resolve(
+                capture.villagerId(),
+                capture.dimensionId(),
+                capture.villagerPosition(),
+                state.getVillages()
+        );
     }
 
     private MarketSimulationResult simulateMarkets(long timestamp) {

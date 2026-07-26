@@ -61,7 +61,8 @@ public final class CompatibilityManager {
             TradeClassifier classifier = new TradeClassifier(numismatic);
             TradeOverhaulAdapter tradeOverhaul = new TradeOverhaulAdapter(
                     dynamicTrades,
-                    classifier
+                    classifier,
+                    numismatic
             );
 
             CompatibilityManager manager = new CompatibilityManager(

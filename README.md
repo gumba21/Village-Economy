@@ -27,8 +27,8 @@ Villagers should slowly recover from market changes over time.
 The repository contains the buildable project foundation, configuration system, server-side
 village tracking, persistent per-village market data, and an invisible supply-and-demand
 simulation. It also contains the read-only trading compatibility foundation described below.
-Trade hooks, player transactions, gameplay mixins, and other player-facing systems have not been
-implemented yet.
+Completed Trade Overhaul transactions are now observed and mapped to their owning village market,
+but they do not change that market or any player-facing gameplay.
 
 ## Required Trading Stack
 
@@ -102,9 +102,79 @@ direction is fabricated. The compatibility layer also reads Trade Overhaul profe
 villager denomination balances, configured pricing information, and available offers without
 modifying them.
 
-This foundation does **not** yet alter villager prices, intercept trades, deduct or grant player
-currency, mutate villager wallets, apply transactions to supply or demand, change restocking,
-register offers, replace screens, or add networking.
+This foundation does **not** alter villager prices, deduct or grant player currency, mutate
+villager wallets, apply transactions to supply or demand, change restocking, register offers,
+replace screens, or add networking.
+
+## Read-Only Trade Observation
+
+Village Economy observes Trade Overhaul 1.0.1's server-side
+`handleBuyOnServer` and `handleSellOnServer` transaction methods. A small compatibility mixin takes
+an immutable pre-execution snapshot at method entry and checks the final state when the method
+returns. A transaction is accepted only when both the source item count and Numismatic player
+balance moved in the expected directions. Preview, disabled, unaffordable, cancelled, and other
+early-return paths have no matching deltas and emit nothing.
+
+This also handles Trade Overhaul's bulk buttons correctly: quantity is the actual source-stack
+delta and monetary value is the exact player-balance delta. A click is never assumed to represent
+one item or one offer unit.
+
+```mermaid
+flowchart TD
+    A["Trade Overhaul transaction"] --> B["Village Economy observer"]
+    B --> C["Compatibility classification"]
+    C --> D["Village and market mapping"]
+    D --> E["Read-only ObservedTransaction event"]
+```
+
+### Transaction and deduplication model
+
+The immutable `ObservedTransaction` contains the game time, player and villager UUIDs, dimension,
+villager position/profession/level, BUY or SELL direction, canonical item identifier, actual
+quantity, exact `MarketValue`, stable village and market references, transaction source, and a
+small execution snapshot. It stores no live `ItemStack`, `MerchantOffer`, entity, inventory,
+component, or third-party object.
+
+Every entry into an authoritative Trade Overhaul transaction method receives a monotonically
+increasing execution token. The short-lived deduplication key combines that token with player,
+villager, direction, item, quantity, and value. A duplicate callback for one execution is
+suppressed, while rapid identical trades receive different tokens and remain separate. The cache
+expires after 40 ticks, is capped at 2,048 entries, is memory-only, and stores no entity references.
+
+### Ownership and market mapping
+
+The villager's server-side dimension and position at completion are authoritative. A bounded
+in-memory villager-membership cache is checked first, then the existing spatial village query is
+used. Resolution never crosses dimensions, never uses the player's position, rejects unloaded
+villages, respects the tracked village radius, and does not create a village because a trade
+occurred.
+
+The resolved village UUID performs an O(1) lookup of its existing market. Missing markets are
+reported diagnostically; transaction observation does not create duplicates or run persistence
+repair. The item is mapped only when that exact registry identifier is already tracked by the
+village market.
+
+Ordinary and modded items use their canonical registry identifier when explicitly tracked.
+Damage and cosmetic names do not change that identifier. Enchanted items, enchanted books, filled
+maps, potions, and items with identity-bearing custom NBT are retained in diagnostics but excluded
+from valid market events because their economic identity cannot safely be represented by the
+current item-ID-only market model. Untracked unusual items are not automatically added.
+
+### Events, diagnostics, and failure isolation
+
+Valid observations are published synchronously on the server thread through
+`ObservedTransactionListener`. Listener exceptions are isolated and rate-limited so one listener
+cannot stop a trade or block later listeners. The default behavior only records diagnostics; it
+does not connect transactions to the simulator.
+
+The newest 100 diagnostic results and their counters are held in memory per server. They are not
+written to world data and are cleared at full server shutdown. If observation fails after Trade
+Overhaul has committed a transaction, gameplay fails open: the trade remains complete, no normal
+market event is published, no market mutation occurs, and a bounded diagnostic failure is kept
+where possible.
+
+The next planned integration stage may consume these immutable events to affect supply and demand.
+That connection is intentionally outside this change.
 
 ## Configuration
 
@@ -354,6 +424,21 @@ gold/silver/bronze ratios. To inspect an exact conversion without changing any b
 ```
 
 This prints the denomination breakdown and recomposed round-trip value.
+
+Trade observation diagnostics are permission level 2 and read-only:
+
+```text
+/villageeconomy trades
+/villageeconomy trades recent [count]
+/villageeconomy trades inspect
+/villageeconomy trades clear
+```
+
+`trades` reports hook health and counters. `recent` displays up to 50 bounded diagnostic entries,
+newest first. `inspect` reads the nearest villager within 16 blocks and shows its profession,
+level, village/market resolution, Trade Overhaul inventory prices, merchant-offer classification,
+and item mapping without requiring a transaction. `clear` resets only runtime history, counters,
+and deduplication state; persisted villages and markets are untouched.
 
 ## Building
 
