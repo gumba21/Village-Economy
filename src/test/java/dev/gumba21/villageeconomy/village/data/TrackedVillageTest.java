@@ -1,7 +1,9 @@
 package dev.gumba21.villageeconomy.village.data;
 
+import dev.gumba21.villageeconomy.MinecraftTestBootstrap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
@@ -11,6 +13,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TrackedVillageTest {
+    @BeforeAll
+    static void bootstrapMinecraft() {
+        MinecraftTestBootstrap.initialize();
+    }
+
     @Test
     void updatesMutableFieldsWithoutChangingIdentityOrDiscoveryTime() {
         UUID id = UUID.randomUUID();
