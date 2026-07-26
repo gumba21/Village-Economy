@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -231,7 +232,11 @@ public final class VillageManager {
             }
 
             ServerLevel level = levelsByDimension.get(village.getDimension());
-            if (level == null || !level.hasChunkAt(village.getCenter())) {
+            BlockPos center = village.getCenter();
+            if (level == null || !level.hasChunk(
+                    SectionPos.blockToSectionCoord(center.getX()),
+                    SectionPos.blockToSectionCoord(center.getZ())
+            )) {
                 if (village.updateLoadedState(false)) {
                     state.setDirty();
                 }
