@@ -8,11 +8,13 @@ import dev.gumba21.villageeconomy.market.registry.DefaultTradeGoods;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -304,6 +306,33 @@ class VillagePersistentStateTest {
         CompoundTag saved = state.save(root);
 
         assertEquals("keep-me", saved.getString("UnrelatedData"));
+    }
+
+    @Test
+    void roundTripsCachedProfessionCounts() {
+        VillagePersistentState state = new VillagePersistentState();
+        UUID villageId = UUID.randomUUID();
+        ResourceLocation farmer =
+                new ResourceLocation("minecraft", "farmer");
+        state.add(new TrackedVillage(
+                villageId,
+                BlockPos.ZERO,
+                Level.OVERWORLD,
+                64,
+                1_000L,
+                1_000L,
+                5,
+                3,
+                true,
+                Map.of(farmer, 4)
+        ));
+
+        VillagePersistentState restored =
+                VillagePersistentState.load(state.save(new CompoundTag()));
+        TrackedVillage village = restored.getVillages().iterator().next();
+
+        assertEquals(4, village.getProfessionCount(farmer));
+        assertFalse(restored.isDirty());
     }
 
     private CompoundTag rootWith(CompoundTag village) {

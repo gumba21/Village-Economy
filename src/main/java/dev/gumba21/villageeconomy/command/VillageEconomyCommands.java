@@ -5,6 +5,7 @@ import com.mojang.brigadier.context.CommandContext;
 import dev.gumba21.villageeconomy.market.MarketManager;
 import dev.gumba21.villageeconomy.market.data.MarketEntry;
 import dev.gumba21.villageeconomy.market.data.MarketState;
+import dev.gumba21.villageeconomy.market.simulation.MarketSimulationResult;
 import dev.gumba21.villageeconomy.village.VillageManager;
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -30,7 +31,12 @@ public final class VillageEconomyCommands {
                                 .then(Commands.literal("villages")
                                         .executes(VillageEconomyCommands::listVillages))
                                 .then(Commands.literal("market")
-                                        .executes(VillageEconomyCommands::listMarkets))
+                                        .executes(VillageEconomyCommands::listMarkets)
+                                        .then(Commands.literal("simulate")
+                                                .executes(
+                                                        VillageEconomyCommands
+                                                                ::simulateMarkets
+                                                )))
                 )
         );
     }
@@ -86,16 +92,42 @@ public final class VillageEconomyCommands {
                 if (displayed >= SAMPLE_PRICE_COUNT) {
                     break;
                 }
-                String sample = "  %s | price=%s | supply=%s | demand=%s".formatted(
+                String sample = (
+                        "  %s | price=%s | base=%s | supply=%s | "
+                                + "demand=%s | multiplier=%s"
+                ).formatted(
                         entry.getItemId(),
                         formatDecimal(entry.getCurrentPrice()),
+                        formatDecimal(entry.getBasePrice()),
                         formatDecimal(entry.getSupply()),
-                        formatDecimal(entry.getDemand())
+                        formatDecimal(entry.getDemand()),
+                        formatDecimal(
+                                entry.getCurrentPrice() / entry.getBasePrice()
+                        )
                 );
                 source.sendSuccess(() -> Component.literal(sample), false);
                 displayed++;
             }
         }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int simulateMarkets(
+            CommandContext<CommandSourceStack> context
+    ) {
+        CommandSourceStack source = context.getSource();
+        MarketSimulationResult result = VillageManager.get(source.getServer())
+                .simulateMarketsNow();
+        source.sendSuccess(
+                () -> Component.literal(
+                        "Simulated one market tick: villages=%d, pricesChanged=%d"
+                                .formatted(
+                                        result.villagesUpdated(),
+                                        result.pricesChanged()
+                                )
+                ),
+                false
+        );
         return Command.SINGLE_SUCCESS;
     }
 

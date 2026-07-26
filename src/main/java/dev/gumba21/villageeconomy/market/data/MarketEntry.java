@@ -7,12 +7,12 @@ import java.util.Objects;
 public final class MarketEntry {
     private final ResourceLocation itemId;
     private final double basePrice;
-    private final double currentPrice;
-    private final double minimumMultiplier;
-    private final double maximumMultiplier;
-    private final double supply;
-    private final double demand;
-    private final long lastModifiedTimestamp;
+    private double currentPrice;
+    private double minimumMultiplier;
+    private double maximumMultiplier;
+    private double supply;
+    private double demand;
+    private long lastModifiedTimestamp;
 
     public MarketEntry(
             ResourceLocation itemId,
@@ -25,36 +25,15 @@ public final class MarketEntry {
             long lastModifiedTimestamp
     ) {
         this.itemId = Objects.requireNonNull(itemId, "itemId");
-        if (!Double.isFinite(basePrice) || basePrice <= 0.0) {
-            throw new IllegalArgumentException("basePrice must be finite and positive");
-        }
-        if (!Double.isFinite(minimumMultiplier) || minimumMultiplier <= 0.0) {
-            throw new IllegalArgumentException(
-                    "minimumMultiplier must be finite and positive"
-            );
-        }
-        if (!Double.isFinite(maximumMultiplier)
-                || maximumMultiplier < minimumMultiplier) {
-            throw new IllegalArgumentException(
-                    "maximumMultiplier must be finite and at least the minimum"
-            );
-        }
-        if (!Double.isFinite(currentPrice)
-                || currentPrice < basePrice * minimumMultiplier
-                || currentPrice > basePrice * maximumMultiplier) {
-            throw new IllegalArgumentException(
-                    "currentPrice must be within the configured price bounds"
-            );
-        }
-        if (!Double.isFinite(supply) || supply < 0.0) {
-            throw new IllegalArgumentException("supply must be finite and non-negative");
-        }
-        if (!Double.isFinite(demand) || demand < 0.0) {
-            throw new IllegalArgumentException("demand must be finite and non-negative");
-        }
-        if (lastModifiedTimestamp <= 0L) {
-            throw new IllegalArgumentException("lastModifiedTimestamp must be positive");
-        }
+        validateValues(
+                basePrice,
+                currentPrice,
+                minimumMultiplier,
+                maximumMultiplier,
+                supply,
+                demand,
+                lastModifiedTimestamp
+        );
         this.basePrice = basePrice;
         this.currentPrice = currentPrice;
         this.minimumMultiplier = minimumMultiplier;
@@ -62,6 +41,33 @@ public final class MarketEntry {
         this.supply = supply;
         this.demand = demand;
         this.lastModifiedTimestamp = lastModifiedTimestamp;
+    }
+
+    public boolean updateSimulationValues(
+            double newCurrentPrice,
+            double newMinimumMultiplier,
+            double newMaximumMultiplier,
+            double newSupply,
+            double newDemand,
+            long modifiedTimestamp
+    ) {
+        validateValues(
+                basePrice,
+                newCurrentPrice,
+                newMinimumMultiplier,
+                newMaximumMultiplier,
+                newSupply,
+                newDemand,
+                modifiedTimestamp
+        );
+        boolean priceChanged = Math.abs(newCurrentPrice - currentPrice) > 1.0E-9;
+        currentPrice = newCurrentPrice;
+        minimumMultiplier = newMinimumMultiplier;
+        maximumMultiplier = newMaximumMultiplier;
+        supply = newSupply;
+        demand = newDemand;
+        lastModifiedTimestamp = modifiedTimestamp;
+        return priceChanged;
     }
 
     public ResourceLocation getItemId() {
@@ -94,5 +100,46 @@ public final class MarketEntry {
 
     public long getLastModifiedTimestamp() {
         return lastModifiedTimestamp;
+    }
+
+    private static void validateValues(
+            double basePrice,
+            double currentPrice,
+            double minimumMultiplier,
+            double maximumMultiplier,
+            double supply,
+            double demand,
+            long lastModifiedTimestamp
+    ) {
+        if (!Double.isFinite(basePrice) || basePrice <= 0.0) {
+            throw new IllegalArgumentException("basePrice must be finite and positive");
+        }
+        if (!Double.isFinite(minimumMultiplier) || minimumMultiplier <= 0.0) {
+            throw new IllegalArgumentException(
+                    "minimumMultiplier must be finite and positive"
+            );
+        }
+        if (!Double.isFinite(maximumMultiplier)
+                || maximumMultiplier < minimumMultiplier) {
+            throw new IllegalArgumentException(
+                    "maximumMultiplier must be finite and at least the minimum"
+            );
+        }
+        if (!Double.isFinite(currentPrice)
+                || currentPrice < basePrice * minimumMultiplier
+                || currentPrice > basePrice * maximumMultiplier) {
+            throw new IllegalArgumentException(
+                    "currentPrice must be within the configured price bounds"
+            );
+        }
+        if (!Double.isFinite(supply) || supply < 0.0) {
+            throw new IllegalArgumentException("supply must be finite and non-negative");
+        }
+        if (!Double.isFinite(demand) || demand < 0.0) {
+            throw new IllegalArgumentException("demand must be finite and non-negative");
+        }
+        if (lastModifiedTimestamp <= 0L) {
+            throw new IllegalArgumentException("lastModifiedTimestamp must be positive");
+        }
     }
 }

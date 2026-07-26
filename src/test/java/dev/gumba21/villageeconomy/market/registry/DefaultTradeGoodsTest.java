@@ -16,16 +16,21 @@ class DefaultTradeGoodsTest {
                 .map(TradeGoodDefinition::itemId)
                 .collect(Collectors.toSet());
 
-        assertEquals(27, DefaultTradeGoods.size());
+        assertEquals(31, DefaultTradeGoods.size());
         assertEquals(DefaultTradeGoods.size(), itemIds.size());
         assertTrue(itemIds.contains(new ResourceLocation("minecraft", "wheat")));
         assertTrue(itemIds.contains(new ResourceLocation("minecraft", "milk_bucket")));
         assertTrue(itemIds.contains(new ResourceLocation("minecraft", "diamond")));
+        assertTrue(itemIds.contains(new ResourceLocation(
+                "minecraft",
+                "iron_pickaxe"
+        )));
         assertTrue(itemIds.contains(new ResourceLocation("minecraft", "bookshelf")));
         assertTrue(DefaultTradeGoods.all().stream().allMatch(
                 definition -> definition.basePrice() > 0.0
                         && definition.initialSupply() >= 0.0
                         && definition.initialDemand() >= 0.0
+                        && definition.supplyDriver() != null
         ));
     }
 }

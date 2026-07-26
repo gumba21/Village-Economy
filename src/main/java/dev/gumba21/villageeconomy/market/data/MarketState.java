@@ -13,7 +13,7 @@ import java.util.UUID;
 public final class MarketState {
     private final UUID villageId;
     private final long creationTimestamp;
-    private final long lastUpdateTimestamp;
+    private long lastUpdateTimestamp;
     private final Map<ResourceLocation, MarketEntry> entries;
 
     public MarketState(
@@ -61,5 +61,12 @@ public final class MarketState {
 
     public int size() {
         return entries.size();
+    }
+
+    public void markUpdated(long timestamp) {
+        if (timestamp <= 0L) {
+            throw new IllegalArgumentException("timestamp must be positive");
+        }
+        lastUpdateTimestamp = Math.max(creationTimestamp, timestamp);
     }
 }
