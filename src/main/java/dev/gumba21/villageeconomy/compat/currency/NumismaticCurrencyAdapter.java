@@ -18,6 +18,28 @@ import java.util.Optional;
 public final class NumismaticCurrencyAdapter {
     public static final int MAX_MATERIALIZED_STACKS = 4_096;
 
+    private final Item bronzeCoin;
+    private final Item silverCoin;
+    private final Item goldCoin;
+
+    public NumismaticCurrencyAdapter() {
+        this(
+                NumismaticOverhaulItems.BRONZE_COIN,
+                NumismaticOverhaulItems.SILVER_COIN,
+                NumismaticOverhaulItems.GOLD_COIN
+        );
+    }
+
+    NumismaticCurrencyAdapter(
+            Item bronzeCoin,
+            Item silverCoin,
+            Item goldCoin
+    ) {
+        this.bronzeCoin = Objects.requireNonNull(bronzeCoin, "bronzeCoin");
+        this.silverCoin = Objects.requireNonNull(silverCoin, "silverCoin");
+        this.goldCoin = Objects.requireNonNull(goldCoin, "goldCoin");
+    }
+
     public CurrencyBreakdown decompose(MarketValue value) {
         return CurrencyDenominations.decompose(value);
     }
@@ -27,15 +49,15 @@ public final class NumismaticCurrencyAdapter {
     }
 
     public boolean isBronzeCoin(ItemStack stack) {
-        return isItem(stack, NumismaticOverhaulItems.BRONZE_COIN);
+        return isItem(stack, bronzeCoin);
     }
 
     public boolean isSilverCoin(ItemStack stack) {
-        return isItem(stack, NumismaticOverhaulItems.SILVER_COIN);
+        return isItem(stack, silverCoin);
     }
 
     public boolean isGoldCoin(ItemStack stack) {
-        return isItem(stack, NumismaticOverhaulItems.GOLD_COIN);
+        return isItem(stack, goldCoin);
     }
 
     public boolean isCoin(ItemStack stack) {
@@ -103,17 +125,17 @@ public final class NumismaticCurrencyAdapter {
         List<ItemStack> stacks = new ArrayList<>((int) plan.requiredStacks());
         appendStacks(
                 stacks,
-                NumismaticOverhaulItems.GOLD_COIN,
+                goldCoin,
                 plan.breakdown().gold()
         );
         appendStacks(
                 stacks,
-                NumismaticOverhaulItems.SILVER_COIN,
+                silverCoin,
                 plan.breakdown().silver()
         );
         appendStacks(
                 stacks,
-                NumismaticOverhaulItems.BRONZE_COIN,
+                bronzeCoin,
                 plan.breakdown().bronze()
         );
         return List.copyOf(stacks);

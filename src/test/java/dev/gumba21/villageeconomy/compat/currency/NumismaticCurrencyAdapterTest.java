@@ -1,6 +1,5 @@
 package dev.gumba21.villageeconomy.compat.currency;
 
-import com.glisco.numismaticoverhaul.item.NumismaticOverhaulItems;
 import dev.gumba21.villageeconomy.MinecraftTestBootstrap;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -16,7 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NumismaticCurrencyAdapterTest {
     private final NumismaticCurrencyAdapter adapter =
-            new NumismaticCurrencyAdapter();
+            new NumismaticCurrencyAdapter(
+                    Items.COPPER_INGOT,
+                    Items.IRON_INGOT,
+                    Items.GOLD_INGOT
+            );
 
     @BeforeAll
     static void bootstrapMinecraft() {
@@ -26,13 +29,13 @@ class NumismaticCurrencyAdapterTest {
     @Test
     void identifiesAllThreeCoinItems() {
         assertTrue(adapter.isBronzeCoin(
-                new ItemStack(NumismaticOverhaulItems.BRONZE_COIN)
+                new ItemStack(Items.COPPER_INGOT)
         ));
         assertTrue(adapter.isSilverCoin(
-                new ItemStack(NumismaticOverhaulItems.SILVER_COIN)
+                new ItemStack(Items.IRON_INGOT)
         ));
         assertTrue(adapter.isGoldCoin(
-                new ItemStack(NumismaticOverhaulItems.GOLD_COIN)
+                new ItemStack(Items.GOLD_INGOT)
         ));
         assertFalse(adapter.isCoin(new ItemStack(Items.EMERALD)));
     }
@@ -42,7 +45,7 @@ class NumismaticCurrencyAdapterTest {
         assertEquals(
                 30_000L,
                 adapter.valueOfCoinStack(new ItemStack(
-                        NumismaticOverhaulItems.GOLD_COIN,
+                        Items.GOLD_INGOT,
                         3
                 )).orElseThrow().baseUnits()
         );
@@ -53,9 +56,9 @@ class NumismaticCurrencyAdapterTest {
         assertEquals(
                 10_203L,
                 adapter.valueOfCoinStacks(List.of(
-                        new ItemStack(NumismaticOverhaulItems.GOLD_COIN, 1),
-                        new ItemStack(NumismaticOverhaulItems.SILVER_COIN, 2),
-                        new ItemStack(NumismaticOverhaulItems.BRONZE_COIN, 3)
+                        new ItemStack(Items.GOLD_INGOT, 1),
+                        new ItemStack(Items.IRON_INGOT, 2),
+                        new ItemStack(Items.COPPER_INGOT, 3)
                 )).orElseThrow().baseUnits()
         );
     }
@@ -66,7 +69,7 @@ class NumismaticCurrencyAdapterTest {
                 new ItemStack(Items.EMERALD)
         ).isEmpty());
         assertTrue(adapter.valueOfCoinStacks(List.of(
-                new ItemStack(NumismaticOverhaulItems.BRONZE_COIN),
+                new ItemStack(Items.COPPER_INGOT),
                 new ItemStack(Items.EMERALD)
         )).isEmpty());
     }
