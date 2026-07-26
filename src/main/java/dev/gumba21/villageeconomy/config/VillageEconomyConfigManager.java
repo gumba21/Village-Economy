@@ -76,6 +76,22 @@ public final class VillageEconomyConfigManager {
         return currentConfig.getMarketUpdateIntervalTicks();
     }
 
+    public double getPriceChangeStrength() {
+        return currentConfig.getPriceChangeStrength();
+    }
+
+    public double getMinimumPriceMultiplier() {
+        return currentConfig.getMinimumPriceMultiplier();
+    }
+
+    public double getMaximumPriceMultiplier() {
+        return currentConfig.getMaximumPriceMultiplier();
+    }
+
+    public double getRecoveryRate() {
+        return currentConfig.getRecoveryRate();
+    }
+
     public synchronized ConfigLoadResult load() {
         try {
             createParentDirectory();

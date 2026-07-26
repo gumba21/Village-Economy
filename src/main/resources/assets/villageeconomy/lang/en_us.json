@@ -3,7 +3,7 @@
   "config.villageeconomy.category.general": "General",
   "config.villageeconomy.apply_behavior": "Changes are saved and applied immediately. No restart or reload is required.",
   "config.villageeconomy.enabled": "Enabled",
-  "config.villageeconomy.enabled.description": "Master switch for Village Economy village tracking and future systems.",
+  "config.villageeconomy.enabled.description": "Master switch for Village Economy village tracking and market simulation.",
   "config.villageeconomy.debugLogging": "Debug Logging",
   "config.villageeconomy.debugLogging.description": "Writes additional diagnostic details to the log. Leave disabled during normal play.",
   "config.villageeconomy.villageDetectionRadius": "Village Detection Radius",
@@ -11,11 +11,11 @@
   "config.villageeconomy.marketUpdateIntervalTicks": "Market Update Interval",
   "config.villageeconomy.marketUpdateIntervalTicks.description": "Ticks between loaded-village scans. 1,200 ticks is approximately one minute.",
   "config.villageeconomy.priceChangeStrength": "Price Change Strength",
-  "config.villageeconomy.priceChangeStrength.description": "Controls the size of future price adjustments. 0 disables adjustment and 1 is the allowed maximum.",
+  "config.villageeconomy.priceChangeStrength.description": "Controls how quickly prices approach their simulated target. 0 disables demand-driven movement.",
   "config.villageeconomy.minimumPriceMultiplier": "Minimum Price Multiplier",
-  "config.villageeconomy.minimumPriceMultiplier.description": "Lowest multiplier future economy calculations may apply to a price.",
+  "config.villageeconomy.minimumPriceMultiplier.description": "Lowest multiplier market simulation may apply to a price.",
   "config.villageeconomy.maximumPriceMultiplier": "Maximum Price Multiplier",
-  "config.villageeconomy.maximumPriceMultiplier.description": "Highest multiplier future economy calculations may apply to a price.",
+  "config.villageeconomy.maximumPriceMultiplier.description": "Highest multiplier market simulation may apply to a price.",
   "config.villageeconomy.recoveryRate": "Recovery Rate",
-  "config.villageeconomy.recoveryRate.description": "Fraction of future market imbalance recovered during each update."
+  "config.villageeconomy.recoveryRate.description": "Controls normalization of supply, demand, and prices toward equilibrium each update."
 }

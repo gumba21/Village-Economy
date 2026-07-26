@@ -2,8 +2,12 @@ package dev.gumba21.villageeconomy.village.data;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -18,6 +22,9 @@ public final class TrackedVillage {
     private int villagerCount;
     private int workstationCount;
     private boolean loaded;
+    private final Map<ResourceLocation, Integer> professionCounts = new HashMap<>();
+    private final Map<ResourceLocation, Integer> professionCountsView =
+            Collections.unmodifiableMap(professionCounts);
 
     public TrackedVillage(
             UUID id,
@@ -30,6 +37,32 @@ public final class TrackedVillage {
             int workstationCount,
             boolean loaded
     ) {
+        this(
+                id,
+                center,
+                dimension,
+                detectionRadius,
+                firstDiscoveredTimestamp,
+                lastSeenTimestamp,
+                villagerCount,
+                workstationCount,
+                loaded,
+                Map.of()
+        );
+    }
+
+    public TrackedVillage(
+            UUID id,
+            BlockPos center,
+            ResourceKey<Level> dimension,
+            int detectionRadius,
+            long firstDiscoveredTimestamp,
+            long lastSeenTimestamp,
+            int villagerCount,
+            int workstationCount,
+            boolean loaded,
+            Map<ResourceLocation, Integer> professionCounts
+    ) {
         this.id = Objects.requireNonNull(id, "id");
         this.center = Objects.requireNonNull(center, "center").immutable();
         this.dimension = Objects.requireNonNull(dimension, "dimension");
@@ -39,6 +72,7 @@ public final class TrackedVillage {
         this.villagerCount = villagerCount;
         this.workstationCount = workstationCount;
         this.loaded = loaded;
+        replaceProfessionCounts(professionCounts);
     }
 
     public boolean updateSeen(
@@ -48,12 +82,31 @@ public final class TrackedVillage {
             int newVillagerCount,
             int newWorkstationCount
     ) {
+        return updateSeen(
+                newCenter,
+                newDetectionRadius,
+                seenTimestamp,
+                newVillagerCount,
+                newWorkstationCount,
+                Map.copyOf(professionCounts)
+        );
+    }
+
+    public boolean updateSeen(
+            BlockPos newCenter,
+            int newDetectionRadius,
+            long seenTimestamp,
+            int newVillagerCount,
+            int newWorkstationCount,
+            Map<ResourceLocation, Integer> newProfessionCounts
+    ) {
         BlockPos immutableCenter = newCenter.immutable();
         boolean changed = !center.equals(immutableCenter)
                 || detectionRadius != newDetectionRadius
                 || lastSeenTimestamp != seenTimestamp
                 || villagerCount != newVillagerCount
                 || workstationCount != newWorkstationCount
+                || !professionCounts.equals(newProfessionCounts)
                 || !loaded;
 
         center = immutableCenter;
@@ -61,6 +114,7 @@ public final class TrackedVillage {
         lastSeenTimestamp = Math.max(firstDiscoveredTimestamp, seenTimestamp);
         villagerCount = Math.max(0, newVillagerCount);
         workstationCount = Math.max(0, newWorkstationCount);
+        replaceProfessionCounts(newProfessionCounts);
         loaded = true;
         return changed;
     }
@@ -123,5 +177,30 @@ public final class TrackedVillage {
 
     public boolean isLoaded() {
         return loaded;
+    }
+
+    public Map<ResourceLocation, Integer> getProfessionCounts() {
+        return professionCountsView;
+    }
+
+    public int getProfessionCount(ResourceLocation professionId) {
+        return professionCounts.getOrDefault(professionId, 0);
+    }
+
+    private void replaceProfessionCounts(
+            Map<ResourceLocation, Integer> newProfessionCounts
+    ) {
+        Objects.requireNonNull(newProfessionCounts, "professionCounts");
+        professionCounts.clear();
+        for (Map.Entry<ResourceLocation, Integer> entry
+                : newProfessionCounts.entrySet()) {
+            int count = entry.getValue() == null ? 0 : entry.getValue();
+            if (count > 0) {
+                professionCounts.put(
+                        Objects.requireNonNull(entry.getKey(), "professionId"),
+                        count
+                );
+            }
+        }
     }
 }

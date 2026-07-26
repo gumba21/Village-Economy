@@ -55,6 +55,9 @@ java {
 
 test {
     useJUnitPlatform()
+    testLogging {
+        showStandardStreams = true
+    }
 }
 
 jar {

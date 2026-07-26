@@ -108,6 +108,10 @@ public final class MarketManager {
         return generated;
     }
 
+    public void markDirty() {
+        state.setDirty();
+    }
+
     private static MarketState createDefaultMarket(
             UUID villageId,
             long timestamp,

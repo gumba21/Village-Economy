@@ -28,7 +28,7 @@ import java.util.UUID;
 public final class VillagePersistentState extends SavedData {
     public static final String DATA_NAME = "villageeconomy_villages";
 
-    private static final int CURRENT_DATA_VERSION = 2;
+    private static final int CURRENT_DATA_VERSION = 3;
     private static final String VILLAGES_KEY = "Villages";
     private static final String MARKETS_KEY = "Markets";
 
@@ -285,6 +285,16 @@ public final class VillagePersistentState extends SavedData {
         tag.putInt("VillagerCount", village.getVillagerCount());
         tag.putInt("WorkstationCount", village.getWorkstationCount());
         tag.putBoolean("Loaded", village.isLoaded());
+
+        ListTag professions = new ListTag();
+        for (Map.Entry<ResourceLocation, Integer> profession
+                : village.getProfessionCounts().entrySet()) {
+            CompoundTag professionTag = new CompoundTag();
+            professionTag.putString("Id", profession.getKey().toString());
+            professionTag.putInt("Count", profession.getValue());
+            professions.add(professionTag);
+        }
+        tag.put("Professions", professions);
         return tag;
     }
 
@@ -341,6 +351,24 @@ public final class VillagePersistentState extends SavedData {
             repaired = true;
         }
 
+        Map<ResourceLocation, Integer> professionCounts = new LinkedHashMap<>();
+        if (tag.contains("Professions", Tag.TAG_LIST)) {
+            ListTag savedProfessions =
+                    tag.getList("Professions", Tag.TAG_COMPOUND);
+            for (int index = 0; index < savedProfessions.size(); index++) {
+                CompoundTag professionTag = savedProfessions.getCompound(index);
+                ResourceLocation professionId =
+                        ResourceLocation.tryParse(professionTag.getString("Id"));
+                int count = professionTag.getInt("Count");
+                if (professionId == null || count <= 0
+                        || professionCounts.putIfAbsent(professionId, count) != null) {
+                    repaired = true;
+                }
+            }
+        } else {
+            repaired = true;
+        }
+
         TrackedVillage village = new TrackedVillage(
                 id,
                 center,
@@ -350,7 +378,8 @@ public final class VillagePersistentState extends SavedData {
                 lastSeen,
                 villagerCount,
                 workstationCount,
-                false
+                false,
+                professionCounts
         );
         return new VillageReadResult(village, repaired);
     }

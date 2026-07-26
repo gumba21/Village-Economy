@@ -4,6 +4,9 @@ import dev.gumba21.villageeconomy.command.VillageEconomyCommands;
 import dev.gumba21.villageeconomy.config.VillageEconomyConfigManager;
 import dev.gumba21.villageeconomy.debug.VillageEconomyDebugLogger;
 import dev.gumba21.villageeconomy.market.MarketManager;
+import dev.gumba21.villageeconomy.market.simulation.MarketSimulationResult;
+import dev.gumba21.villageeconomy.market.simulation.MarketSimulator;
+import dev.gumba21.villageeconomy.market.simulation.SimulationParameters;
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
 import dev.gumba21.villageeconomy.village.data.VillagePersistentState;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -11,7 +14,9 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
@@ -40,6 +45,7 @@ public final class VillageManager {
     private final MinecraftServer server;
     private final VillagePersistentState state;
     private final MarketManager marketManager;
+    private final MarketSimulator marketSimulator = new MarketSimulator();
 
     private final List<Villager> loadedVillagers = new ArrayList<>();
     private final List<DetectionCluster> clusters = new ArrayList<>();
@@ -190,7 +196,8 @@ public final class VillageManager {
                         now,
                         cluster.villagerCount,
                         cluster.workstations.size(),
-                        true
+                        true,
+                        cluster.professionCounts
                 );
                 if (state.add(village)) {
                     marketManager.createMarket(village.getId());
@@ -215,7 +222,8 @@ public final class VillageManager {
                     radius,
                     now,
                     cluster.villagerCount,
-                    cluster.workstations.size()
+                    cluster.workstations.size(),
+                    cluster.professionCounts
             )) {
                 state.setDirty();
                 updated++;
@@ -266,7 +274,8 @@ public final class VillageManager {
                     radius,
                     now,
                     0,
-                    0
+                    0,
+                    Map.of()
             )) {
                 state.setDirty();
                 updated++;
@@ -283,6 +292,7 @@ public final class VillageManager {
                 removed,
                 durationMicros
         );
+        simulateMarkets(now);
     }
 
     private void addToCluster(
@@ -354,6 +364,10 @@ public final class VillageManager {
         return marketManager;
     }
 
+    public MarketSimulationResult simulateMarketsNow() {
+        return simulateMarkets(System.currentTimeMillis());
+    }
+
     public Optional<TrackedVillage> findVillage(
             ResourceKey<Level> dimension,
             BlockPos position
@@ -368,9 +382,28 @@ public final class VillageManager {
         return state.findNearest(dimension, position);
     }
 
+    private MarketSimulationResult simulateMarkets(long timestamp) {
+        VillageEconomyConfigManager configManager =
+                VillageEconomyConfigManager.getInstance();
+        SimulationParameters parameters = new SimulationParameters(
+                configManager.getMinimumPriceMultiplier(),
+                configManager.getMaximumPriceMultiplier(),
+                configManager.getPriceChangeStrength(),
+                configManager.getRecoveryRate()
+        );
+        return marketSimulator.simulateAll(
+                state.getVillages(),
+                marketManager,
+                parameters,
+                timestamp
+        );
+    }
+
     private static final class DetectionCluster {
         private final ResourceKey<Level> dimension;
         private final Set<BlockPos> workstations = new HashSet<>();
+        private final Map<ResourceLocation, Integer> professionCounts =
+                new HashMap<>();
 
         private long totalX;
         private long totalY;
@@ -387,6 +420,12 @@ public final class VillageManager {
             totalY += position.getY();
             totalZ += position.getZ();
             villagerCount++;
+
+            ResourceLocation professionId = BuiltInRegistries.VILLAGER_PROFESSION
+                    .getKey(villager.getVillagerData().getProfession());
+            if (professionId != null) {
+                professionCounts.merge(professionId, 1, Integer::sum);
+            }
 
             Optional<GlobalPos> jobSite =
                     villager.getBrain().getMemory(MemoryModuleType.JOB_SITE);

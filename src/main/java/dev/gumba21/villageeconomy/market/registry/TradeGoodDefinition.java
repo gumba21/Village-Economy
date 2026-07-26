@@ -8,10 +8,12 @@ public record TradeGoodDefinition(
         ResourceLocation itemId,
         double basePrice,
         double initialSupply,
-        double initialDemand
+        double initialDemand,
+        SupplyDriver supplyDriver
 ) {
     public TradeGoodDefinition {
         Objects.requireNonNull(itemId, "itemId");
+        Objects.requireNonNull(supplyDriver, "supplyDriver");
         if (!Double.isFinite(basePrice) || basePrice <= 0.0) {
             throw new IllegalArgumentException("basePrice must be finite and positive");
         }

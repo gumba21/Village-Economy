@@ -2,15 +2,18 @@ package dev.gumba21.villageeconomy.village.data;
 
 import dev.gumba21.villageeconomy.MinecraftTestBootstrap;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TrackedVillageTest {
     @BeforeAll
@@ -65,6 +68,31 @@ class TrackedVillageTest {
         assertFalse(village.updateLoadedState(true));
         assertTrue(village.updateLoadedState(false));
         assertFalse(village.updateLoadedState(false));
+    }
+
+    @Test
+    void updatesCachedProfessionCountsWithoutExposingMutableMap() {
+        TrackedVillage village = village(
+                UUID.randomUUID(),
+                BlockPos.ZERO,
+                1_000L
+        );
+        ResourceLocation farmer =
+                new ResourceLocation("minecraft", "farmer");
+
+        assertTrue(village.updateSeen(
+                BlockPos.ZERO,
+                64,
+                2_000L,
+                5,
+                3,
+                Map.of(farmer, 4)
+        ));
+        assertEquals(4, village.getProfessionCount(farmer));
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> village.getProfessionCounts().put(farmer, 10)
+        );
     }
 
     private TrackedVillage village(UUID id, BlockPos center, long discovered) {
