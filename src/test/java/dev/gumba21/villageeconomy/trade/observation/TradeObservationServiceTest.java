@@ -11,7 +11,10 @@ import dev.gumba21.villageeconomy.trade.model.ObservedTransaction;
 import dev.gumba21.villageeconomy.trade.model.TradeCapture;
 import dev.gumba21.villageeconomy.trade.model.TradeExecutionSnapshot;
 import dev.gumba21.villageeconomy.trade.model.TransactionSource;
+import dev.gumba21.villageeconomy.trade.mapping.VillageOwnershipIndex;
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadEvidence;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadReconciler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -161,6 +164,46 @@ class TradeObservationServiceTest {
         assertEquals(demand, entry.getDemand());
         assertEquals(price, entry.getCurrentPrice());
         assertEquals(updated, fixture.market.getLastUpdateTimestamp());
+    }
+
+    @Test
+    void tradeObservationResolvesVillageAndMarketAfterAreaReloads() {
+        Fixture fixture = fixture();
+        fixture.village.updateLoadedState(false);
+        VillageLoadReconciler reconciler = new VillageLoadReconciler();
+        reconciler.reconcile(
+                fixture.village,
+                false,
+                new VillageLoadEvidence(4, 1, 1, 0)
+        );
+        VillageOwnershipIndex index = new VillageOwnershipIndex(8);
+        TradeObservationService service = new TradeObservationService(
+                capture -> index.resolve(
+                        capture.villagerId(),
+                        capture.dimensionId(),
+                        capture.villagerPosition(),
+                        List.of(fixture.village)
+                ),
+                villageId -> villageId.equals(fixture.village.getId())
+                        ? Optional.of(fixture.market)
+                        : Optional.empty()
+        );
+
+        Optional<ObservedTransaction> observed = service.observe(validCapture(1L));
+
+        assertTrue(observed.isPresent());
+        assertEquals(
+                fixture.village.getId(),
+                observed.orElseThrow().village().villageId()
+        );
+        assertEquals(
+                fixture.market.getVillageId(),
+                observed.orElseThrow().market().villageId()
+        );
+        assertEquals(
+                0L,
+                service.diagnostics().count(ObservationStatus.NO_VILLAGE)
+        );
     }
 
     @Test

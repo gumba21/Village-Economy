@@ -1,6 +1,8 @@
 package dev.gumba21.villageeconomy.trade.mapping;
 
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadEvidence;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadReconciler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -126,6 +128,42 @@ class VillageOwnershipIndexTest {
             );
         }
         assertEquals(2, index.size());
+    }
+
+    @Test
+    void villageResolutionSucceedsImmediatelyAfterAreaReloads() {
+        VillageOwnershipIndex index = new VillageOwnershipIndex(8);
+        VillageLoadReconciler reconciler = new VillageLoadReconciler();
+        TrackedVillage village = village(
+                OVERWORLD,
+                new BlockPos(0, 64, 0),
+                true
+        );
+        VillageLoadEvidence absent = VillageLoadEvidence.absent(4);
+        reconciler.reconcile(village, false, absent);
+        reconciler.reconcile(village, false, absent);
+        assertTrue(index.resolve(
+                UUID.randomUUID(),
+                OVERWORLD,
+                BlockPos.ZERO,
+                List.of(village)
+        ).isEmpty());
+
+        reconciler.reconcile(
+                village,
+                false,
+                new VillageLoadEvidence(4, 1, 1, 0)
+        );
+
+        assertEquals(
+                village.getId(),
+                index.resolve(
+                        UUID.randomUUID(),
+                        OVERWORLD,
+                        BlockPos.ZERO,
+                        List.of(village)
+                ).orElseThrow().getId()
+        );
     }
 
     private static TrackedVillage village(

@@ -232,14 +232,19 @@ At startup, Village Economy loads its tracked-village state. While `enabled` is 
 3. Groups nearby villagers using `villageDetectionRadius`, counts their distinct assigned job
    sites, and caches their profession mix for market simulation.
 4. Matches groups to existing records by dimension and distance, preserving stable UUIDs.
-5. Marks records outside loaded chunks as unloaded instead of deleting them.
-6. Removes a record only when its center chunk is loaded and vanilla no longer considers its
-   center a village.
+5. Reconciles loaded state from all chunks intersecting the detection radius, loaded villagers
+   in that area, and nearby players without force-loading chunks.
+6. Requires two consecutive scans with no active evidence before marking a village unloaded;
+   one transient scan miss never clears the loaded state.
 
 Each record stores its stable UUID, center, dimension, detection radius, discovery and last-seen
 timestamps, villager, workstation, and profession counts, and current loaded state. The manager
 also supports containing-village and nearest-village queries for later features. The cached
 observations avoid a second entity scan during market simulation.
+
+With `debugLogging=true`, actual loaded-state transitions and rejected transient unloads include
+the village UUID, reason, tracked and currently loaded villager counts, relevant loaded chunk
+count, and nearby player count.
 
 ## Market Foundation
 

@@ -13,6 +13,9 @@ import dev.gumba21.villageeconomy.trade.model.TradeCapture;
 import dev.gumba21.villageeconomy.trade.observation.TradeObservationService;
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
 import dev.gumba21.villageeconomy.village.data.VillagePersistentState;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadEvidence;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadReconciler;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadReconciliation;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
@@ -54,11 +57,14 @@ public final class VillageManager {
     private final VillageOwnershipIndex villageOwnershipIndex =
             new VillageOwnershipIndex();
 
-    private final List<Villager> loadedVillagers = new ArrayList<>();
     private final List<DetectionCluster> clusters = new ArrayList<>();
     private final List<TrackedVillage> villageSnapshot = new ArrayList<>();
     private final Set<UUID> matchedVillageIds = new HashSet<>();
     private final Map<ResourceKey<Level>, ServerLevel> levelsByDimension = new HashMap<>();
+    private final Map<ResourceKey<Level>, List<Villager>>
+            loadedVillagersByDimension = new HashMap<>();
+    private final VillageLoadReconciler loadReconciler =
+            new VillageLoadReconciler();
 
     private int ticksUntilScan;
     private boolean enabledLastTick;
@@ -119,7 +125,7 @@ public final class VillageManager {
         if (manager == null || manager.server != server) {
             return;
         }
-        manager.markAllUnloaded();
+        manager.markAllUnloaded("server_stopping");
         VillageEconomyDebugLogger.info(
                 "Prepared {} tracked villages for persistent save",
                 manager.state.size()
@@ -131,6 +137,7 @@ public final class VillageManager {
         if (manager != null && manager.server == server) {
             manager.tradeObservationService.shutdown();
             manager.villageOwnershipIndex.clear();
+            manager.loadReconciler.clear();
             instance = null;
         }
     }
@@ -140,7 +147,7 @@ public final class VillageManager {
                 VillageEconomyConfigManager.getInstance();
         if (!configManager.isVillageTrackingEnabled()) {
             if (enabledLastTick) {
-                markAllUnloaded();
+                markAllUnloaded("tracking_disabled");
             }
             enabledLastTick = false;
             ticksUntilScan = 0;
@@ -171,6 +178,7 @@ public final class VillageManager {
         clusters.clear();
         matchedVillageIds.clear();
         levelsByDimension.clear();
+        loadedVillagersByDimension.values().forEach(List::clear);
 
         VillageEconomyDebugLogger.info(
                 "Village scan started: radius={}, interval={} ticks",
@@ -180,7 +188,11 @@ public final class VillageManager {
 
         for (ServerLevel level : server.getAllLevels()) {
             levelsByDimension.put(level.dimension(), level);
-            loadedVillagers.clear();
+            List<Villager> loadedVillagers =
+                    loadedVillagersByDimension.computeIfAbsent(
+                            level.dimension(),
+                            ignored -> new ArrayList<>()
+                    );
             level.getEntities(EntityType.VILLAGER, ACTIVE_VILLAGER, loadedVillagers);
 
             for (Villager villager : loadedVillagers) {
@@ -234,6 +246,11 @@ public final class VillageManager {
             }
 
             matchedVillageIds.add(existing.getId());
+            reconcileLoadedState(
+                    existing,
+                    true,
+                    collectLoadEvidence(existing)
+            );
             if (existing.updateSeen(
                     center,
                     radius,
@@ -261,42 +278,11 @@ public final class VillageManager {
                 continue;
             }
 
-            ServerLevel level = levelsByDimension.get(village.getDimension());
-            BlockPos center = village.getCenter();
-            if (level == null || !level.hasChunk(
-                    SectionPos.blockToSectionCoord(center.getX()),
-                    SectionPos.blockToSectionCoord(center.getZ())
-            )) {
-                if (village.updateLoadedState(false)) {
-                    state.setDirty();
-                }
-                continue;
-            }
-
-            if (!level.isVillage(village.getCenter())) {
-                if (state.remove(village.getId())) {
-                    removed++;
-                    VillageEconomyDebugLogger.info(
-                            "Village removed: uuid={}, dimension={}, center={}",
-                            village.getId(),
-                            village.getDimension().location(),
-                            village.getCenter().toShortString()
-                    );
-                }
-                continue;
-            }
-
-            if (village.updateSeen(
-                    village.getCenter(),
-                    radius,
-                    now,
-                    0,
-                    0,
-                    Map.of()
-            )) {
-                state.setDirty();
-                updated++;
-            }
+            reconcileLoadedState(
+                    village,
+                    false,
+                    collectLoadEvidence(village)
+            );
         }
 
         long durationMicros = (System.nanoTime() - startedAt) / 1_000L;
@@ -363,13 +349,116 @@ public final class VillageManager {
         return closest;
     }
 
-    private void markAllUnloaded() {
-        boolean changed = false;
-        for (TrackedVillage village : state.getVillages()) {
-            changed |= village.updateLoadedState(false);
+    private VillageLoadEvidence collectLoadEvidence(TrackedVillage village) {
+        ServerLevel level = levelsByDimension.get(village.getDimension());
+        if (level == null) {
+            return VillageLoadEvidence.absent(village.getVillagerCount());
         }
-        if (changed) {
+
+        int loadedTrackedVillagers = 0;
+        List<Villager> villagers =
+                loadedVillagersByDimension.get(village.getDimension());
+        if (villagers != null) {
+            for (Villager villager : villagers) {
+                if (village.contains(
+                        village.getDimension(),
+                        villager.blockPosition()
+                )) {
+                    loadedTrackedVillagers++;
+                }
+            }
+        }
+
+        int nearbyPlayers = 0;
+        for (var player : level.players()) {
+            if (village.contains(village.getDimension(), player.blockPosition())) {
+                nearbyPlayers++;
+            }
+        }
+
+        return new VillageLoadEvidence(
+                village.getVillagerCount(),
+                loadedTrackedVillagers,
+                countRelevantLoadedChunks(level, village),
+                nearbyPlayers
+        );
+    }
+
+    private static int countRelevantLoadedChunks(
+            ServerLevel level,
+            TrackedVillage village
+    ) {
+        BlockPos center = village.getCenter();
+        int radius = village.getDetectionRadius();
+        int minimumChunkX =
+                SectionPos.blockToSectionCoord(center.getX() - radius);
+        int maximumChunkX =
+                SectionPos.blockToSectionCoord(center.getX() + radius);
+        int minimumChunkZ =
+                SectionPos.blockToSectionCoord(center.getZ() - radius);
+        int maximumChunkZ =
+                SectionPos.blockToSectionCoord(center.getZ() + radius);
+        int loadedChunks = 0;
+
+        for (int chunkX = minimumChunkX; chunkX <= maximumChunkX; chunkX++) {
+            for (int chunkZ = minimumChunkZ; chunkZ <= maximumChunkZ; chunkZ++) {
+                if (level.hasChunk(chunkX, chunkZ)) {
+                    loadedChunks++;
+                }
+            }
+        }
+        return loadedChunks;
+    }
+
+    private void reconcileLoadedState(
+            TrackedVillage village,
+            boolean detectedThisScan,
+            VillageLoadEvidence evidence
+    ) {
+        VillageLoadReconciliation reconciliation = loadReconciler.reconcile(
+                village,
+                detectedThisScan,
+                evidence
+        );
+        if (reconciliation.changed()) {
             state.setDirty();
+        }
+        logLoadedStateReconciliation(reconciliation);
+    }
+
+    private static void logLoadedStateReconciliation(
+            VillageLoadReconciliation reconciliation
+    ) {
+        if (!reconciliation.changed() && !reconciliation.rejectedUnload()) {
+            return;
+        }
+        VillageLoadEvidence evidence = reconciliation.evidence();
+        String event = reconciliation.rejectedUnload()
+                ? "Village unload transition rejected"
+                : "Village loaded-state transition";
+        VillageEconomyDebugLogger.info(
+                "{}: uuid={}, previous={}, new={}, reason={}, trackedVillagers={}, "
+                        + "loadedTrackedVillagers={}, relevantLoadedChunks={}, nearbyPlayers={}",
+                event,
+                reconciliation.villageId(),
+                reconciliation.previousLoaded(),
+                reconciliation.newLoaded(),
+                reconciliation.reason(),
+                evidence.trackedVillagerCount(),
+                evidence.loadedTrackedVillagerCount(),
+                evidence.relevantLoadedChunkCount(),
+                evidence.nearbyPlayerCount()
+        );
+    }
+
+    private void markAllUnloaded(String reason) {
+        for (TrackedVillage village : state.getVillages()) {
+            VillageLoadReconciliation reconciliation =
+                    loadReconciler.forceUnloaded(village, reason);
+            if (reconciliation.changed()) {
+                state.setDirty();
+                logLoadedStateReconciliation(reconciliation);
+            }
         }
     }
 
