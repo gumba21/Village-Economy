@@ -172,21 +172,21 @@ class TradeObservationServiceTest {
     void tradeObservationResolvesVillageAndMarketAfterAreaReloads() {
         Fixture fixture = fixture();
         fixture.village.updateLoadedState(false);
-        TradeCapture capture = validCapture(1L);
+        TradeCapture completedTrade = validCapture(1L);
         VillageOwnershipIndex index = new VillageOwnershipIndex(8);
 
         assertTrue(index.resolve(
-                capture.villagerId(),
-                capture.dimensionId(),
-                capture.villagerPosition(),
+                completedTrade.villagerId(),
+                completedTrade.dimensionId(),
+                completedTrade.villagerPosition(),
                 List.of(fixture.village)
         ).isEmpty());
 
         VillageReactivationMatch match =
                 new VillageReactivationMatcher().matchLoadedVillager(
-                        capture.villagerId(),
+                        completedTrade.villagerId(),
                         fixture.village.getDimension(),
-                        capture.villagerPosition(),
+                        completedTrade.villagerPosition(),
                         List.of(fixture.village),
                         64
                 ).orElseThrow();
@@ -196,7 +196,10 @@ class TradeObservationServiceTest {
                 false,
                 new VillageLoadEvidence(4, 1, 1, 0)
         );
-        index.associateLoadedVillager(capture.villagerId(), match.village());
+        index.associateLoadedVillager(
+                completedTrade.villagerId(),
+                match.village()
+        );
         TradeObservationService service = new TradeObservationService(
                 capture -> index.resolve(
                         capture.villagerId(),
@@ -209,7 +212,7 @@ class TradeObservationServiceTest {
                         : Optional.empty()
         );
 
-        Optional<ObservedTransaction> observed = service.observe(capture);
+        Optional<ObservedTransaction> observed = service.observe(completedTrade);
 
         assertTrue(observed.isPresent());
         assertEquals(
