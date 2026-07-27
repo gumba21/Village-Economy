@@ -490,17 +490,27 @@ public final class VillageEconomyCommands {
                     break;
                 }
                 String sample = (
-                        "  %s | price=%s | base=%s | supply=%s | "
-                                + "demand=%s | multiplier=%s"
+                        "  %s | price=%s | base=%s | multiplier=%s | "
+                                + "worldSupply=%s | worldDemand=%s | "
+                                + "tradeDemand=%d | tradeSupply=%d | "
+                                + "pressure=%s | recovery=%s | "
+                                + "lastTick=%d | pending=%d "
+                                + "(demand=%d,supply=%d)"
                 ).formatted(
                         entry.getItemId(),
                         formatDecimal(entry.getCurrentPrice()),
                         formatDecimal(entry.getBasePrice()),
+                        formatDecimal(entry.getCurrentMultiplier()),
                         formatDecimal(entry.getSupply()),
                         formatDecimal(entry.getDemand()),
-                        formatDecimal(
-                                entry.getCurrentPrice() / entry.getBasePrice()
-                        )
+                        entry.getLastDemandAccumulator(),
+                        entry.getLastSupplyAccumulator(),
+                        formatDecimal(entry.getLastNetPressure()),
+                        formatDecimal(entry.getLastRecoveryContribution()),
+                        entry.getLastSimulationTick(),
+                        entry.getPendingObservationCount(),
+                        entry.getPendingDemandAccumulator(),
+                        entry.getPendingSupplyAccumulator()
                 );
                 source.sendSuccess(() -> Component.literal(sample), false);
                 displayed++;
@@ -517,10 +527,14 @@ public final class VillageEconomyCommands {
                 .simulateMarketsNow();
         source.sendSuccess(
                 () -> Component.literal(
-                        "Simulated one market tick: villages=%d, pricesChanged=%d"
-                                .formatted(
+                        (
+                                "Simulated one market tick: villages=%d, "
+                                        + "pricesChanged=%d, "
+                                        + "observationsProcessed=%d"
+                        ).formatted(
                                         result.villagesUpdated(),
-                                        result.pricesChanged()
+                                        result.pricesChanged(),
+                                        result.observationsProcessed()
                                 )
                 ),
                 false

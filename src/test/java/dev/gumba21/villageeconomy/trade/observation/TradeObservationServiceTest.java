@@ -2,8 +2,10 @@ package dev.gumba21.villageeconomy.trade.observation;
 
 import dev.gumba21.villageeconomy.compat.currency.MarketValue;
 import dev.gumba21.villageeconomy.compat.trade.TradeDirection;
+import dev.gumba21.villageeconomy.market.MarketManager;
 import dev.gumba21.villageeconomy.market.data.MarketEntry;
 import dev.gumba21.villageeconomy.market.data.MarketState;
+import dev.gumba21.villageeconomy.market.simulation.MarketObservationAccumulator;
 import dev.gumba21.villageeconomy.trade.model.ItemIdentityKind;
 import dev.gumba21.villageeconomy.trade.model.ItemSnapshot;
 import dev.gumba21.villageeconomy.trade.model.ObservationStatus;
@@ -13,6 +15,7 @@ import dev.gumba21.villageeconomy.trade.model.TradeExecutionSnapshot;
 import dev.gumba21.villageeconomy.trade.model.TransactionSource;
 import dev.gumba21.villageeconomy.trade.mapping.VillageOwnershipIndex;
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
+import dev.gumba21.villageeconomy.village.data.VillagePersistentState;
 import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadEvidence;
 import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadReconciler;
 import dev.gumba21.villageeconomy.village.lifecycle.VillageReactivationMatch;
@@ -94,6 +97,52 @@ class TradeObservationServiceTest {
         fixture.service.observe(validCapture(2L));
 
         assertEquals(2, received.get());
+    }
+
+    @Test
+    void duplicateObservationAccumulatesMarketPressureOnlyOnce() {
+        VillagePersistentState state = new VillagePersistentState();
+        TrackedVillage village = new TrackedVillage(
+                UUID.randomUUID(),
+                BlockPos.ZERO,
+                ResourceKey.create(Registries.DIMENSION, OVERWORLD),
+                64,
+                NOW,
+                NOW,
+                4,
+                2,
+                true
+        );
+        assertTrue(state.add(village));
+        MarketManager marketManager = new MarketManager(state);
+        MarketState market = marketManager.createMarket(village.getId());
+        VillageOwnershipIndex index = new VillageOwnershipIndex(8);
+        TradeObservationService service = new TradeObservationService(
+                capture -> index.resolve(
+                        capture.villagerId(),
+                        capture.dimensionId(),
+                        capture.villagerPosition(),
+                        state.getVillages()
+                ),
+                marketManager::getMarket
+        );
+        service.registerListener(
+                new MarketObservationAccumulator(marketManager)
+        );
+        TradeCapture completedTrade = validCapture(500L);
+
+        service.observe(completedTrade);
+        service.observe(completedTrade);
+
+        MarketEntry bread = market.getEntry(BREAD).orElseThrow();
+        assertEquals(1L, bread.getPendingObservationCount());
+        assertEquals(4L, bread.getPendingDemandAccumulator());
+        assertEquals(
+                1L,
+                service.diagnostics().count(
+                        ObservationStatus.DUPLICATE_SUPPRESSED
+                )
+        );
     }
 
     @Test

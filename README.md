@@ -28,7 +28,8 @@ The repository contains the buildable project foundation, configuration system, 
 village tracking, persistent per-village market data, and an invisible supply-and-demand
 simulation. It also contains the read-only trading compatibility foundation described below.
 Completed Trade Overhaul transactions are now observed and mapped to their owning village market,
-but they do not change that market or any player-facing gameplay.
+where they increment persistent per-item pressure counters. Periodic simulation consumes those
+counters to move internal market prices; player-facing villager offers are not rewritten yet.
 
 ## Required Trading Stack
 
@@ -103,8 +104,9 @@ villager denomination balances, configured pricing information, and available of
 modifying them.
 
 This foundation does **not** alter villager prices, deduct or grant player currency, mutate
-villager wallets, apply transactions to supply or demand, change restocking, register offers,
-replace screens, or add networking.
+villager wallets, change restocking, register offers, replace screens, or add networking. Valid
+observations now feed Village Economy's own persisted market counters, but never change the
+transaction that produced them.
 
 ## Read-Only Trade Observation
 
@@ -125,6 +127,7 @@ flowchart TD
     B --> C["Compatibility classification"]
     C --> D["Village and market mapping"]
     D --> E["Read-only ObservedTransaction event"]
+    E --> F["Persistent market accumulator"]
 ```
 
 ### Transaction and deduplication model
@@ -164,17 +167,16 @@ current item-ID-only market model. Untracked unusual items are not automatically
 
 Valid observations are published synchronously on the server thread through
 `ObservedTransactionListener`. Listener exceptions are isolated and rate-limited so one listener
-cannot stop a trade or block later listeners. The default behavior only records diagnostics; it
-does not connect transactions to the simulator.
+cannot stop a trade or block later listeners. `MarketObservationAccumulator` reduces each valid
+BUY or SELL into exact integer counters on that market entry. The accumulator never scans
+diagnostic history, and the observation deduplicator prevents an internal duplicate callback from
+being counted twice.
 
 The newest 100 diagnostic results and their counters are held in memory per server. They are not
 written to world data and are cleared at full server shutdown. If observation fails after Trade
 Overhaul has committed a transaction, gameplay fails open: the trade remains complete, no normal
-market event is published, no market mutation occurs, and a bounded diagnostic failure is kept
-where possible.
-
-The next planned integration stage may consume these immutable events to affect supply and demand.
-That connection is intentionally outside this change.
+market event is published, no market accumulator is changed, and a bounded diagnostic failure is
+kept where possible.
 
 ## Configuration
 
@@ -258,6 +260,9 @@ collection of `MarketEntry` objects. Each entry stores:
 - base and current price
 - minimum and maximum price multiplier
 - supply and demand values
+- pending observed purchase/sale quantities and observation count
+- last processed demand, supply, net pressure, and recovery contribution
+- last simulation game tick
 - last-modified time
 
 Newly discovered villages receive a market immediately. When an existing world loads, the
@@ -266,8 +271,9 @@ supports getting, creating, removing, checking, and resetting a village market, 
 item's current price. Creating a market twice returns the existing instance rather than producing
 duplicates.
 
-There is still no trade interception, buying, selling, restocking, merchant behavior, or
-player-facing effect. The simulation changes only persisted internal market values.
+There is still no trade replacement, buying, selling, restocking, merchant behavior, or
+player-facing price rewrite. The simulation changes only Village Economy's persisted internal
+market values.
 
 ## Market Simulation
 
@@ -276,41 +282,46 @@ uses the same `marketUpdateIntervalTicks` schedule, so no economy work runs ever
 permission-level-2 simulation command can request exactly one additional update without changing
 the normal schedule.
 
-Loaded villages use their latest observable population, workstation, detection-radius, and cached
-profession counts. Unloaded villages do not reuse stale production bonuses; their values instead
-recover passively toward equilibrium. All calculations are deterministic and process each market
-entry once, making an update O(number of tracked entries).
+Valid trade observations are accumulated incrementally as they occur. Each update reads and clears
+only those per-entry counters, so historical diagnostic observations are never rescanned. Market
+entries are processed in registry-identifier order and villages in UUID order. All calculations
+are deterministic and an update remains O(number of tracked entries).
 
-### Supply Model
+### Observed Demand and Supply
 
-Each good belongs to a centralized production driver:
+Player purchases add the transferred item quantity to that entry's demand accumulator. Player
+sales add the quantity to its supply accumulator. Counts use saturating integer arithmetic, so
+their result does not depend on callback or hash-map iteration order. Each valid observation also
+increments a pending-observation count.
 
-- farmers: crops, bread, fruit, eggs, and milk
-- armorers, toolsmiths, and weaponsmiths: coal, metals, emeralds, and diamonds
-- fletchers: sticks, logs, and planks
-- masons: stone and cobblestone
-- butchers: cooked meats
-- leatherworkers: leather
-- librarians: paper and bookshelves
+At simulation time:
 
-The supply target combines population, assigned workstations, village detection radius, and the
-relevant profession count. It is softly bounded between 35% and 300% of the good's default supply.
-Current supply approaches that target gradually instead of jumping to it.
+```text
+net units = observed purchase quantity - observed sale quantity
+net pressure = tanh(net units / 16)
+```
 
-### Demand Model
+The bounded pressure keeps large bursts finite without introducing randomization. Equal buying and
+selling cancel exactly. An observation belongs to one village, market, and item, so wheat activity
+cannot change carrots or another village.
 
-Demand combines population, the relevant profession mix, and relative abundance. Scarce goods
-receive a higher target and abundant goods receive a lower target. The target is bounded between
-35% and 300% of default demand, and current demand approaches it gradually. When live observations
-are unavailable, demand normalizes toward its default instead of drifting indefinitely.
+The earlier population/profession supply and demand estimates remain available as background
+market data, but observed trade pressure is now the only input that moves the stored price.
 
 ### Price Calculation and Recovery
 
-Price calculations compare demand and supply after both are normalized against the good's default
-values. A logarithmic ratio and bounded `tanh` response create a soft equilibrium and prevent
-extreme imbalance from producing extreme price targets. `priceChangeStrength` controls the small
-step toward that target, while `recoveryRate` pulls supply, demand, and prices back toward their
-defaults.
+Every update first moves the current multiplier toward `1.0` by `recoveryRate`, then applies a
+bounded pressure step:
+
+```text
+recovery = (1.0 - current multiplier) × recoveryRate
+pressure step = net pressure × priceChangeStrength × 0.1
+next multiplier = clamp(current + recovery + pressure step)
+```
+
+Recovery never overshoots equilibrium. With no activity, the pressure step is zero and the item
+continuously approaches `1.0`. Trade counters are cleared only after the entry update succeeds;
+the diagnostic history remains available separately.
 
 Every result is checked for finite, non-negative values. Prices are always clamped between:
 
@@ -319,8 +330,8 @@ basePrice × minimumPriceMultiplier
 basePrice × maximumPriceMultiplier
 ```
 
-With unchanged inputs, repeated updates converge to a stable value rather than oscillating or
-running away.
+Repeated purchases raise the multiplier gradually, repeated sales lower it, and configured bounds
+prevent runaway values.
 
 ### Default Trade Goods
 
@@ -372,21 +383,22 @@ Village and market data use Minecraft's per-world persistent-state system under 
 
 Changes mark only this state as dirty so Minecraft saves the complete village-and-market snapshot
 through its normal atomic world-save cycle; unrelated world data is never read or overwritten.
-Save format version 3 adds cached profession counts to version 2's separate market collection.
-Version 1 and 2 worlds continue loading without changing stable village UUIDs. Missing profession
-counts begin empty and populate during the next loaded scan. Missing market entries are generated,
-invalid values are repaired from central defaults, duplicate or orphan market records are
-discarded, and loaded-state flags are recalculated after a restart.
+Save format version 4 adds pending and last-processed trade-pressure fields to version 3's cached
+profession counts. Older worlds continue loading without changing stable village UUIDs or market
+prices; their new counters begin at zero. Pending observations survive save/reload and are applied
+once on the next simulation update. Missing market entries are generated, invalid values are
+repaired from central defaults, duplicate or orphan market records are discarded, and loaded-state
+flags are recalculated after a restart.
 
 ### Debug Logging
 
 Set `debugLogging` to `true` to log loaded config values, persistent village and market load/save
 counts, scan start/end, discoveries, updates, removals, scan duration, market creation and repair,
-missing-market generation, tracked item counts, simulation start/end, per-village price-change
-counts, largest increases/decreases, and simulation duration. Market diagnostic messages are
-suppressed when `debugLogging` is `false`. Configuration creation/repair warnings and invalid
-village-record warnings remain visible because they describe recovery actions rather than routine
-debug output.
+missing-market generation, tracked item counts, observation accumulation, simulation start/end,
+per-village price-change and processed-observation counts, largest increases/decreases, and
+simulation duration. Market diagnostic messages are suppressed when `debugLogging` is `false`.
+Configuration creation/repair warnings and invalid village-record warnings remain visible because
+they describe recovery actions rather than routine debug output.
 
 ### Debug Command
 
@@ -406,7 +418,8 @@ The market command is also permission level 2:
 ```
 
 It reports each village UUID, tracked-item count, last-update age, and a five-item sample containing
-current price, base price, supply, demand, and price multiplier.
+current price and multiplier, background supply/demand, last trade demand/supply, net pressure,
+recovery contribution, last simulation tick, and pending observation/counter values.
 
 To run exactly one immediate simulation update:
 
@@ -414,8 +427,9 @@ To run exactly one immediate simulation update:
 /villageeconomy market simulate
 ```
 
-The command reports how many villages were updated and how many prices changed. These commands do
-not modify villager trades or any player-facing gameplay.
+The command reports how many villages were updated, how many prices changed, and how many pending
+observations were processed. These commands do not modify villager trades or any player-facing
+gameplay.
 
 The read-only compatibility command is also permission level 2:
 

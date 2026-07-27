@@ -7,6 +7,7 @@ import dev.gumba21.villageeconomy.debug.VillageEconomyDebugLogger;
 import dev.gumba21.villageeconomy.market.MarketManager;
 import dev.gumba21.villageeconomy.market.simulation.MarketSimulationResult;
 import dev.gumba21.villageeconomy.market.simulation.MarketSimulator;
+import dev.gumba21.villageeconomy.market.simulation.MarketObservationAccumulator;
 import dev.gumba21.villageeconomy.market.simulation.SimulationParameters;
 import dev.gumba21.villageeconomy.trade.mapping.VillageOwnershipIndex;
 import dev.gumba21.villageeconomy.trade.model.TradeCapture;
@@ -61,6 +62,7 @@ public final class VillageManager {
     private final VillagePersistentState state;
     private final MarketManager marketManager;
     private final MarketSimulator marketSimulator = new MarketSimulator();
+    private final MarketObservationAccumulator marketObservationAccumulator;
     private final TradeObservationService tradeObservationService;
     private final VillageOwnershipIndex villageOwnershipIndex =
             new VillageOwnershipIndex();
@@ -87,9 +89,14 @@ public final class VillageManager {
         this.state = state;
         this.marketManager = new MarketManager(state);
         this.marketManager.ensureMarkets(state.getVillages());
+        this.marketObservationAccumulator =
+                new MarketObservationAccumulator(marketManager);
         this.tradeObservationService = new TradeObservationService(
                 this::resolveVillageOwnership,
                 marketManager::getMarket
+        );
+        this.tradeObservationService.registerListener(
+                marketObservationAccumulator
         );
         this.tradeObservationService.markHookInitialized();
     }
@@ -841,7 +848,8 @@ public final class VillageManager {
                 state.getVillages(),
                 marketManager,
                 parameters,
-                timestamp
+                timestamp,
+                server.overworld().getGameTime()
         );
     }
 

@@ -3,7 +3,9 @@ package dev.gumba21.villageeconomy.market.data;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.Collection;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -15,6 +17,7 @@ public final class MarketState {
     private final long creationTimestamp;
     private long lastUpdateTimestamp;
     private final Map<ResourceLocation, MarketEntry> entries;
+    private final List<MarketEntry> stableEntries;
 
     public MarketState(
             UUID villageId,
@@ -37,6 +40,12 @@ public final class MarketState {
         for (MarketEntry entry : entries) {
             this.entries.putIfAbsent(entry.getItemId(), entry);
         }
+        List<MarketEntry> sortedEntries =
+                new ArrayList<>(this.entries.values());
+        sortedEntries.sort(Comparator.comparing(
+                entry -> entry.getItemId().toString()
+        ));
+        this.stableEntries = List.copyOf(sortedEntries);
     }
 
     public UUID getVillageId() {
@@ -52,7 +61,7 @@ public final class MarketState {
     }
 
     public Collection<MarketEntry> getEntries() {
-        return Collections.unmodifiableCollection(entries.values());
+        return stableEntries;
     }
 
     public Optional<MarketEntry> getEntry(ResourceLocation itemId) {
