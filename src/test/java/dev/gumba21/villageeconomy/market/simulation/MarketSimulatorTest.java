@@ -1,6 +1,7 @@
 package dev.gumba21.villageeconomy.market.simulation;
 
 import dev.gumba21.villageeconomy.MinecraftTestBootstrap;
+import dev.gumba21.villageeconomy.compat.trade.TradeDirection;
 import dev.gumba21.villageeconomy.market.MarketManager;
 import dev.gumba21.villageeconomy.market.data.MarketEntry;
 import dev.gumba21.villageeconomy.market.data.MarketState;
@@ -177,7 +178,7 @@ class MarketSimulatorTest {
                 System.currentTimeMillis() + 1_000L
         );
 
-        assertTrue(result.pricesChanged() > 0);
+        assertEquals(0, result.pricesChanged());
         assertTrue(fixture.market().getEntries().stream().allMatch(
                 entry -> Double.isFinite(entry.getCurrentPrice())
                         && entry.getSupply() >= 0.0
@@ -280,6 +281,11 @@ class MarketSimulatorTest {
         assertTrue(state.add(first));
         assertTrue(state.add(second));
         manager.ensureMarkets(state.getVillages());
+        manager.getMarket(first.getId())
+                .orElseThrow()
+                .getEntry(WHEAT)
+                .orElseThrow()
+                .recordTradeObservation(TradeDirection.PLAYER_BUYS, 8);
 
         MarketSimulationResult result = simulator.simulateAll(
                 state.getVillages(),
@@ -290,6 +296,7 @@ class MarketSimulatorTest {
 
         assertEquals(2, result.villagesUpdated());
         assertTrue(result.pricesChanged() > 0);
+        assertEquals(1L, result.observationsProcessed());
         assertTrue(state.isDirty());
     }
 

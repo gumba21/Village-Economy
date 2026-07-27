@@ -28,7 +28,7 @@ import java.util.UUID;
 public final class VillagePersistentState extends SavedData {
     public static final String DATA_NAME = "villageeconomy_villages";
 
-    private static final int CURRENT_DATA_VERSION = 3;
+    private static final int CURRENT_DATA_VERSION = 4;
     private static final String VILLAGES_KEY = "Villages";
     private static final String MARKETS_KEY = "Markets";
 
@@ -401,6 +401,38 @@ public final class VillagePersistentState extends SavedData {
             entryTag.putDouble("Supply", entry.getSupply());
             entryTag.putDouble("Demand", entry.getDemand());
             entryTag.putLong("LastModified", entry.getLastModifiedTimestamp());
+            entryTag.putLong(
+                    "PendingDemandAccumulator",
+                    entry.getPendingDemandAccumulator()
+            );
+            entryTag.putLong(
+                    "PendingSupplyAccumulator",
+                    entry.getPendingSupplyAccumulator()
+            );
+            entryTag.putLong(
+                    "PendingObservationCount",
+                    entry.getPendingObservationCount()
+            );
+            entryTag.putLong(
+                    "LastDemandAccumulator",
+                    entry.getLastDemandAccumulator()
+            );
+            entryTag.putLong(
+                    "LastSupplyAccumulator",
+                    entry.getLastSupplyAccumulator()
+            );
+            entryTag.putDouble(
+                    "LastNetPressure",
+                    entry.getLastNetPressure()
+            );
+            entryTag.putDouble(
+                    "LastRecoveryContribution",
+                    entry.getLastRecoveryContribution()
+            );
+            entryTag.putLong(
+                    "LastSimulationTick",
+                    entry.getLastSimulationTick()
+            );
             savedEntries.add(entryTag);
         }
         tag.put("Entries", savedEntries);
@@ -536,6 +568,40 @@ public final class VillagePersistentState extends SavedData {
             repaired = true;
         }
 
+        long pendingDemand = tag.getLong("PendingDemandAccumulator");
+        long pendingSupply = tag.getLong("PendingSupplyAccumulator");
+        long pendingObservations = tag.getLong("PendingObservationCount");
+        long lastDemand = tag.getLong("LastDemandAccumulator");
+        long lastSupply = tag.getLong("LastSupplyAccumulator");
+        long lastSimulationTick = tag.getLong("LastSimulationTick");
+        if (pendingDemand < 0L
+                || pendingSupply < 0L
+                || pendingObservations < 0L
+                || lastDemand < 0L
+                || lastSupply < 0L
+                || lastSimulationTick < 0L) {
+            pendingDemand = Math.max(0L, pendingDemand);
+            pendingSupply = Math.max(0L, pendingSupply);
+            pendingObservations = Math.max(0L, pendingObservations);
+            lastDemand = Math.max(0L, lastDemand);
+            lastSupply = Math.max(0L, lastSupply);
+            lastSimulationTick = Math.max(0L, lastSimulationTick);
+            repaired = true;
+        }
+        double lastNetPressure = tag.getDouble("LastNetPressure");
+        if (!Double.isFinite(lastNetPressure)
+                || lastNetPressure < -1.0
+                || lastNetPressure > 1.0) {
+            lastNetPressure = 0.0;
+            repaired = true;
+        }
+        double lastRecoveryContribution =
+                tag.getDouble("LastRecoveryContribution");
+        if (!Double.isFinite(lastRecoveryContribution)) {
+            lastRecoveryContribution = 0.0;
+            repaired = true;
+        }
+
         MarketEntry entry = new MarketEntry(
                 itemId,
                 basePrice,
@@ -544,7 +610,15 @@ public final class VillagePersistentState extends SavedData {
                 maximumMultiplier,
                 supply,
                 demand,
-                lastModified
+                lastModified,
+                pendingDemand,
+                pendingSupply,
+                pendingObservations,
+                lastDemand,
+                lastSupply,
+                lastNetPressure,
+                lastRecoveryContribution,
+                lastSimulationTick
         );
         return new MarketEntryReadResult(entry, repaired);
     }

@@ -5,6 +5,10 @@ import dev.gumba21.villageeconomy.market.MarketManager;
 import dev.gumba21.villageeconomy.market.data.MarketEntry;
 import dev.gumba21.villageeconomy.market.data.MarketState;
 import dev.gumba21.villageeconomy.market.registry.DefaultTradeGoods;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadEvidence;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadReconciler;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageReactivationMatch;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageReactivationMatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -19,6 +23,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VillagePersistentStateTest {
@@ -220,6 +225,71 @@ class VillagePersistentStateTest {
                         "wheat"
                 )).orElseThrow().getCurrentPrice()
         );
+    }
+
+    @Test
+    void persistedReactivationRetainsVillageAndMarketOwnershipWithoutDuplicates() {
+        VillagePersistentState original = new VillagePersistentState();
+        UUID villageId = UUID.randomUUID();
+        original.add(village(
+                villageId,
+                BlockPos.ZERO,
+                Level.OVERWORLD,
+                64,
+                1_000L,
+                2_000L,
+                7,
+                4
+        ));
+        MarketState originalMarket =
+                new MarketManager(original).createMarket(villageId);
+        MarketEntry originalWheat = originalMarket.getEntry(
+                new ResourceLocation("minecraft", "wheat")
+        ).orElseThrow();
+        originalWheat.updateSimulationValues(
+                1.25,
+                0.5,
+                2.0,
+                73.0,
+                81.0,
+                3_000L
+        );
+
+        VillagePersistentState restored =
+                VillagePersistentState.load(original.save(new CompoundTag()));
+        TrackedVillage persistedVillage =
+                restored.getVillages().iterator().next();
+        MarketState persistedMarket =
+                restored.getMarket(villageId).orElseThrow();
+        MarketManager marketManager = new MarketManager(restored);
+
+        assertFalse(persistedVillage.isLoaded());
+        VillageReactivationMatch match =
+                new VillageReactivationMatcher().matchLoadedVillager(
+                        UUID.randomUUID(),
+                        Level.OVERWORLD,
+                        new BlockPos(4, 64, 4),
+                        restored.getVillages(),
+                        64
+                ).orElseThrow();
+        new VillageLoadReconciler().reconcile(
+                match.village(),
+                false,
+                new VillageLoadEvidence(7, 1, 4, 1)
+        );
+
+        assertTrue(persistedVillage.isLoaded());
+        assertEquals(villageId, persistedVillage.getId());
+        assertEquals(1, restored.size());
+        assertEquals(1, restored.marketSize());
+        assertEquals(0, marketManager.ensureMarkets(restored.getVillages()));
+        assertSame(persistedMarket, marketManager.getMarket(villageId).orElseThrow());
+        MarketEntry persistedWheat = persistedMarket.getEntry(
+                new ResourceLocation("minecraft", "wheat")
+        ).orElseThrow();
+        assertEquals(1.25, persistedWheat.getCurrentPrice());
+        assertEquals(73.0, persistedWheat.getSupply());
+        assertEquals(81.0, persistedWheat.getDemand());
     }
 
     @Test

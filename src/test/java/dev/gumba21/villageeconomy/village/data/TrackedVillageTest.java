@@ -71,6 +71,25 @@ class TrackedVillageTest {
     }
 
     @Test
+    void updatingSeenDoesNotBypassLifecycleLoadedState() {
+        TrackedVillage village = new TrackedVillage(
+                UUID.randomUUID(),
+                BlockPos.ZERO,
+                Level.OVERWORLD,
+                64,
+                1_000L,
+                1_000L,
+                4,
+                2,
+                false
+        );
+
+        village.updateSeen(BlockPos.ZERO, 64, 2_000L, 4, 2);
+
+        assertFalse(village.isLoaded());
+    }
+
+    @Test
     void updatesCachedProfessionCountsWithoutExposingMutableMap() {
         TrackedVillage village = village(
                 UUID.randomUUID(),

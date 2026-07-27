@@ -8,13 +8,18 @@ import dev.gumba21.villageeconomy.market.registry.DefaultTradeGoods;
 import dev.gumba21.villageeconomy.market.registry.TradeGoodDefinition;
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
 
 public final class MarketSimulator {
     private static final double MINIMUM_NORMALIZED_VALUE = 1.0E-6;
     private static final double PRICE_SIGNAL_LIMIT = 0.75;
     private static final double MAX_SUPPLY_SCALE = 3.0;
     private static final double MAX_DEMAND_SCALE = 3.0;
+    private static final double TRADE_PRESSURE_UNIT_SCALE = 16.0;
+    private static final double MAXIMUM_PRESSURE_STEP_SCALE = 0.1;
 
     public MarketSimulationResult simulateAll(
             Collection<TrackedVillage> villages,
@@ -22,9 +27,26 @@ public final class MarketSimulator {
             SimulationParameters parameters,
             long timestamp
     ) {
+        return simulateAll(
+                villages,
+                marketManager,
+                parameters,
+                timestamp,
+                timestamp
+        );
+    }
+
+    public MarketSimulationResult simulateAll(
+            Collection<TrackedVillage> villages,
+            MarketManager marketManager,
+            SimulationParameters parameters,
+            long timestamp,
+            long simulationTick
+    ) {
         long startedAt = System.nanoTime();
         int villagesUpdated = 0;
         int pricesChanged = 0;
+        long observationsProcessed = 0L;
         double largestIncrease = 0.0;
         double largestDecrease = 0.0;
 
@@ -33,23 +55,35 @@ public final class MarketSimulator {
                 villages.size()
         );
 
-        for (TrackedVillage village : villages) {
+        List<TrackedVillage> stableVillages = new ArrayList<>(villages);
+        stableVillages.sort(Comparator.comparing(TrackedVillage::getId));
+        for (TrackedVillage village : stableVillages) {
             MarketState market = marketManager.getMarket(village.getId())
                     .orElseGet(() -> marketManager.createMarket(village.getId()));
-            VillageResult result =
-                    simulateVillage(village, market, parameters, timestamp);
+            VillageResult result = simulateVillage(
+                    village,
+                    market,
+                    parameters,
+                    timestamp,
+                    simulationTick
+            );
             villagesUpdated++;
             pricesChanged += result.pricesChanged();
+            observationsProcessed = saturatingAdd(
+                    observationsProcessed,
+                    result.observationsProcessed()
+            );
             largestIncrease = Math.max(largestIncrease, result.largestIncrease());
             largestDecrease = Math.min(largestDecrease, result.largestDecrease());
 
             VillageEconomyDebugLogger.info(
                     "Market village updated: village={}, loaded={}, trackedItems={}, "
-                            + "pricesChanged={}",
+                            + "pricesChanged={}, observationsProcessed={}",
                     village.getId(),
                     village.isLoaded(),
                     market.size(),
-                    result.pricesChanged()
+                    result.pricesChanged(),
+                    result.observationsProcessed()
             );
         }
 
@@ -59,9 +93,11 @@ public final class MarketSimulator {
         long durationNanos = System.nanoTime() - startedAt;
         VillageEconomyDebugLogger.info(
                 "Market update finished: villages={}, pricesChanged={}, "
+                        + "observationsProcessed={}, "
                         + "largestIncrease={}, largestDecrease={}, duration={} µs",
                 villagesUpdated,
                 pricesChanged,
+                observationsProcessed,
                 largestIncrease,
                 largestDecrease,
                 durationNanos / 1_000L
@@ -69,6 +105,7 @@ public final class MarketSimulator {
         return new MarketSimulationResult(
                 villagesUpdated,
                 pricesChanged,
+                observationsProcessed,
                 largestIncrease,
                 largestDecrease,
                 durationNanos
@@ -81,57 +118,113 @@ public final class MarketSimulator {
             SimulationParameters parameters,
             long timestamp
     ) {
+        return simulateVillage(
+                village,
+                market,
+                parameters,
+                timestamp,
+                timestamp
+        );
+    }
+
+    public VillageResult simulateVillage(
+            TrackedVillage village,
+            MarketState market,
+            SimulationParameters parameters,
+            long timestamp,
+            long simulationTick
+    ) {
+        if (simulationTick < 0L) {
+            throw new IllegalArgumentException(
+                    "simulationTick cannot be negative"
+            );
+        }
         int pricesChanged = 0;
+        long observationsProcessed = 0L;
         double largestIncrease = 0.0;
         double largestDecrease = 0.0;
 
         for (MarketEntry entry : market.getEntries()) {
             TradeGoodDefinition definition =
                     DefaultTradeGoods.getOrNull(entry.getItemId());
-            if (definition == null) {
-                continue;
+            double newSupply = entry.getSupply();
+            double newDemand = entry.getDemand();
+            if (definition != null) {
+                double supplyTarget = applyRecovery(
+                        calculateSupplyTarget(definition, village),
+                        definition.initialSupply(),
+                        parameters.recoveryRate()
+                );
+                newSupply = approach(
+                        entry.getSupply(),
+                        supplyTarget,
+                        responseRate(parameters.recoveryRate())
+                );
+                double demandTarget = applyRecovery(
+                        calculateDemandTarget(
+                                definition,
+                                village,
+                                newSupply
+                        ),
+                        definition.initialDemand(),
+                        parameters.recoveryRate()
+                );
+                newDemand = approach(
+                        entry.getDemand(),
+                        demandTarget,
+                        responseRate(parameters.recoveryRate())
+                );
             }
 
-            double supplyTarget = applyRecovery(
-                    calculateSupplyTarget(definition, village),
-                    definition.initialSupply(),
-                    parameters.recoveryRate()
+            long demandAccumulator =
+                    entry.getPendingDemandAccumulator();
+            long supplyAccumulator =
+                    entry.getPendingSupplyAccumulator();
+            long pendingObservations =
+                    entry.getPendingObservationCount();
+            double netPressure = calculateNetPressure(
+                    demandAccumulator,
+                    supplyAccumulator
             );
-            double newSupply = approach(
-                    entry.getSupply(),
-                    supplyTarget,
-                    responseRate(parameters.recoveryRate())
-            );
-            double demandTarget = applyRecovery(
-                    calculateDemandTarget(
-                            definition,
-                            village,
-                            newSupply
-                    ),
-                    definition.initialDemand(),
-                    parameters.recoveryRate()
-            );
-            double newDemand = approach(
-                    entry.getDemand(),
-                    demandTarget,
-                    responseRate(parameters.recoveryRate())
-            );
-            double newPrice = calculatePrice(
+            double recoveryContribution = calculateRecoveryContribution(
                     entry,
-                    definition,
-                    newSupply,
-                    newDemand,
+                    parameters
+            );
+            double newPrice = calculateObservedTradePrice(
+                    entry,
+                    netPressure,
+                    recoveryContribution,
                     parameters
             );
 
-            double priceDelta = newPrice - entry.getCurrentPrice();
-            boolean changed = entry.updateSimulationValues(
+            double priceDelta =
+                    newPrice - entry.getCurrentPrice();
+            boolean changed = entry.applyTradeSimulation(
                     newPrice,
                     parameters.minimumPriceMultiplier(),
                     parameters.maximumPriceMultiplier(),
-                    sanitizeNonNegative(newSupply, definition.initialSupply()),
-                    sanitizeNonNegative(newDemand, definition.initialDemand()),
+                    sanitizeNonNegative(
+                            newSupply,
+                            definition == null
+                                    ? entry.getSupply()
+                                    : definition.initialSupply()
+                    ),
+                    sanitizeNonNegative(
+                            newDemand,
+                            definition == null
+                                    ? entry.getDemand()
+                                    : definition.initialDemand()
+                    ),
+                    demandAccumulator,
+                    supplyAccumulator,
+                    netPressure,
+                    recoveryContribution,
+                    simulationTick,
                     timestamp
+            );
+            observationsProcessed = saturatingAdd(
+                    observationsProcessed,
+                    pendingObservations
             );
             if (changed) {
                 pricesChanged++;
@@ -142,9 +235,73 @@ public final class MarketSimulator {
         market.markUpdated(timestamp);
         return new VillageResult(
                 pricesChanged,
+                observationsProcessed,
                 largestIncrease,
                 largestDecrease
         );
+    }
+
+    public double calculateNetPressure(
+            long demandAccumulator,
+            long supplyAccumulator
+    ) {
+        if (demandAccumulator < 0L || supplyAccumulator < 0L) {
+            throw new IllegalArgumentException(
+                    "Trade accumulators cannot be negative"
+            );
+        }
+        double netUnits = (double) demandAccumulator
+                - (double) supplyAccumulator;
+        double netPressure = StrictMath.tanh(
+                netUnits / TRADE_PRESSURE_UNIT_SCALE
+        );
+        netPressure = clamp(
+                sanitizeFinite(netPressure, 0.0),
+                -1.0,
+                1.0
+        );
+        return netPressure;
+    }
+
+    public double calculateRecoveryContribution(
+            MarketEntry entry,
+            SimulationParameters parameters
+    ) {
+        double currentMultiplier = entry.getCurrentMultiplier();
+        return sanitizeFinite(
+                (1.0 - currentMultiplier) * parameters.recoveryRate(),
+                0.0
+        );
+    }
+
+    public double calculateObservedTradePrice(
+            MarketEntry entry,
+            double netPressure,
+            double recoveryContribution,
+            SimulationParameters parameters
+    ) {
+        double currentMultiplier = entry.getCurrentMultiplier();
+        double recoveredMultiplier =
+                currentMultiplier + recoveryContribution;
+        double pressureContribution = netPressure
+                * parameters.priceChangeStrength()
+                * MAXIMUM_PRESSURE_STEP_SCALE;
+        double nextMultiplier = clamp(
+                sanitizeFinite(
+                        recoveredMultiplier + pressureContribution,
+                        1.0
+                ),
+                parameters.minimumPriceMultiplier(),
+                parameters.maximumPriceMultiplier()
+        );
+        double newPrice = clamp(
+                entry.getBasePrice() * nextMultiplier,
+                entry.getBasePrice()
+                        * parameters.minimumPriceMultiplier(),
+                entry.getBasePrice()
+                        * parameters.maximumPriceMultiplier()
+        );
+        return newPrice;
     }
 
     public double calculateSupplyTarget(
@@ -285,10 +442,22 @@ public final class MarketSimulator {
         return Math.max(minimum, Math.min(maximum, value));
     }
 
+    private static long saturatingAdd(long current, long increment) {
+        if (increment < 0L) {
+            throw new IllegalArgumentException("increment cannot be negative");
+        }
+        if (Long.MAX_VALUE - current < increment) {
+            return Long.MAX_VALUE;
+        }
+        return current + increment;
+    }
+
     public record VillageResult(
             int pricesChanged,
+            long observationsProcessed,
             double largestIncrease,
             double largestDecrease
     ) {
     }
+
 }

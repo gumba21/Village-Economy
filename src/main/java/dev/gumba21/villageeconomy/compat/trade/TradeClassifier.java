@@ -7,6 +7,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -78,6 +79,40 @@ public final class TradeClassifier {
                 offer.maximumUses(),
                 offer.specialPrice(),
                 offer.dynamicVillagerTradesOffer()
+        );
+    }
+
+    /**
+     * Classifies Trade Overhaul's wallet-backed execution methods. Their
+     * authoritative method determines whether this is a player purchase or
+     * sale; item and value validation remain centralized here.
+     */
+    public WalletTradeClassification classifyWalletTransaction(
+            TradeDirection authoritativeDirection,
+            ItemStack marketItem,
+            int actualQuantity,
+            MarketValue actualValue
+    ) {
+        Objects.requireNonNull(authoritativeDirection, "authoritativeDirection");
+        Objects.requireNonNull(actualValue, "actualValue");
+        if ((authoritativeDirection != TradeDirection.PLAYER_BUYS
+                && authoritativeDirection != TradeDirection.PLAYER_SELLS)
+                || marketItem == null
+                || marketItem.isEmpty()
+                || actualQuantity <= 0
+                || actualValue.baseUnits() <= 0L) {
+            return new WalletTradeClassification(
+                    TradeDirection.UNKNOWN,
+                    Optional.empty(),
+                    Math.max(0, actualQuantity),
+                    Optional.empty()
+            );
+        }
+        return new WalletTradeClassification(
+                authoritativeDirection,
+                itemId(marketItem),
+                actualQuantity,
+                Optional.of(actualValue)
         );
     }
 
