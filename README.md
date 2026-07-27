@@ -236,6 +236,8 @@ At startup, Village Economy loads its tracked-village state. While `enabled` is 
    in that area, and nearby players without force-loading chunks.
 6. Requires two consecutive scans with no active evidence before marking a village unloaded;
    one transient scan miss never clears the loaded state.
+7. Removes a vanished village only after two complete loaded-area scans find neither a loaded
+   villager nor a vanilla village, preserving the existing cleanup without trusting partial data.
 
 Each record stores its stable UUID, center, dimension, detection radius, discovery and last-seen
 timestamps, villager, workstation, and profession counts, and current loaded state. The manager

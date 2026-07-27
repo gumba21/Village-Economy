@@ -43,6 +43,7 @@ import java.util.UUID;
 import java.util.function.Predicate;
 
 public final class VillageManager {
+    private static final int MISSING_SCANS_BEFORE_REMOVAL = 2;
     private static final Predicate<Villager> ACTIVE_VILLAGER =
             villager -> villager.isAlive() && !villager.isRemoved();
 
@@ -63,6 +64,8 @@ public final class VillageManager {
     private final Map<ResourceKey<Level>, ServerLevel> levelsByDimension = new HashMap<>();
     private final Map<ResourceKey<Level>, List<Villager>>
             loadedVillagersByDimension = new HashMap<>();
+    private final Map<UUID, Integer> consecutiveMissingVillageScans =
+            new HashMap<>();
     private final VillageLoadReconciler loadReconciler =
             new VillageLoadReconciler();
 
@@ -138,6 +141,7 @@ public final class VillageManager {
             manager.tradeObservationService.shutdown();
             manager.villageOwnershipIndex.clear();
             manager.loadReconciler.clear();
+            manager.consecutiveMissingVillageScans.clear();
             instance = null;
         }
     }
@@ -246,6 +250,7 @@ public final class VillageManager {
             }
 
             matchedVillageIds.add(existing.getId());
+            consecutiveMissingVillageScans.remove(existing.getId());
             reconcileLoadedState(
                     existing,
                     true,
@@ -278,11 +283,15 @@ public final class VillageManager {
                 continue;
             }
 
+            VillageLoadEvidence evidence = collectLoadEvidence(village);
             reconcileLoadedState(
                     village,
                     false,
-                    collectLoadEvidence(village)
+                    evidence
             );
+            if (removeIfConfirmedMissing(village, evidence)) {
+                removed++;
+            }
         }
 
         long durationMicros = (System.nanoTime() - startedAt) / 1_000L;
@@ -408,6 +417,61 @@ public final class VillageManager {
             }
         }
         return loadedChunks;
+    }
+
+    private boolean removeIfConfirmedMissing(
+            TrackedVillage village,
+            VillageLoadEvidence evidence
+    ) {
+        ServerLevel level = levelsByDimension.get(village.getDimension());
+        if (level == null
+                || evidence.loadedTrackedVillagerCount() > 0
+                || evidence.relevantLoadedChunkCount()
+                < relevantChunkCount(village)
+                || level.isVillage(village.getCenter())) {
+            consecutiveMissingVillageScans.remove(village.getId());
+            return false;
+        }
+
+        int missingScans = consecutiveMissingVillageScans.merge(
+                village.getId(),
+                1,
+                (previous, ignored) -> Math.min(
+                        MISSING_SCANS_BEFORE_REMOVAL,
+                        previous + 1
+                )
+        );
+        if (missingScans < MISSING_SCANS_BEFORE_REMOVAL) {
+            return false;
+        }
+
+        consecutiveMissingVillageScans.remove(village.getId());
+        loadReconciler.forget(village.getId());
+        if (!state.remove(village.getId())) {
+            return false;
+        }
+        VillageEconomyDebugLogger.info(
+                "Village removed after confirmed absence: uuid={}, dimension={}, center={}",
+                village.getId(),
+                village.getDimension().location(),
+                village.getCenter().toShortString()
+        );
+        return true;
+    }
+
+    private static int relevantChunkCount(TrackedVillage village) {
+        BlockPos center = village.getCenter();
+        int radius = village.getDetectionRadius();
+        int minimumChunkX =
+                SectionPos.blockToSectionCoord(center.getX() - radius);
+        int maximumChunkX =
+                SectionPos.blockToSectionCoord(center.getX() + radius);
+        int minimumChunkZ =
+                SectionPos.blockToSectionCoord(center.getZ() - radius);
+        int maximumChunkZ =
+                SectionPos.blockToSectionCoord(center.getZ() + radius);
+        return (maximumChunkX - minimumChunkX + 1)
+                * (maximumChunkZ - minimumChunkZ + 1);
     }
 
     private void reconcileLoadedState(

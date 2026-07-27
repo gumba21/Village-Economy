@@ -104,6 +104,10 @@ public final class VillageLoadReconciler {
         );
     }
 
+    public void forget(UUID villageId) {
+        consecutiveMissingScans.remove(villageId);
+    }
+
     public void clear() {
         consecutiveMissingScans.clear();
     }
