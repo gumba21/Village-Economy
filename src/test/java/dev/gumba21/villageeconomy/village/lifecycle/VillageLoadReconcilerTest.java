@@ -125,6 +125,27 @@ class VillageLoadReconcilerTest {
         assertTrue(result.changed());
     }
 
+    @Test
+    void inactivePersistedVillageRequiresStrongReactivationEvidence() {
+        VillageLoadReconciler reconciler = new VillageLoadReconciler();
+        TrackedVillage village = village(false);
+
+        reconciler.reconcile(
+                village,
+                false,
+                new VillageLoadEvidence(4, 0, 6, 0)
+        );
+        assertFalse(village.isLoaded());
+
+        VillageLoadReconciliation result = reconciler.reconcile(
+                village,
+                false,
+                new VillageLoadEvidence(4, 0, 6, 1)
+        );
+        assertTrue(village.isLoaded());
+        assertTrue(result.changed());
+    }
+
     private static TrackedVillage village(boolean loaded) {
         return new TrackedVillage(
                 UUID.randomUUID(),

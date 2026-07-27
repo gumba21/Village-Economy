@@ -15,6 +15,8 @@ import dev.gumba21.villageeconomy.trade.mapping.VillageOwnershipIndex;
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
 import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadEvidence;
 import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadReconciler;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageReactivationMatch;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageReactivationMatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -170,13 +172,31 @@ class TradeObservationServiceTest {
     void tradeObservationResolvesVillageAndMarketAfterAreaReloads() {
         Fixture fixture = fixture();
         fixture.village.updateLoadedState(false);
+        TradeCapture capture = validCapture(1L);
+        VillageOwnershipIndex index = new VillageOwnershipIndex(8);
+
+        assertTrue(index.resolve(
+                capture.villagerId(),
+                capture.dimensionId(),
+                capture.villagerPosition(),
+                List.of(fixture.village)
+        ).isEmpty());
+
+        VillageReactivationMatch match =
+                new VillageReactivationMatcher().matchLoadedVillager(
+                        capture.villagerId(),
+                        fixture.village.getDimension(),
+                        capture.villagerPosition(),
+                        List.of(fixture.village),
+                        64
+                ).orElseThrow();
         VillageLoadReconciler reconciler = new VillageLoadReconciler();
         reconciler.reconcile(
-                fixture.village,
+                match.village(),
                 false,
                 new VillageLoadEvidence(4, 1, 1, 0)
         );
-        VillageOwnershipIndex index = new VillageOwnershipIndex(8);
+        index.associateLoadedVillager(capture.villagerId(), match.village());
         TradeObservationService service = new TradeObservationService(
                 capture -> index.resolve(
                         capture.villagerId(),
@@ -189,7 +209,7 @@ class TradeObservationServiceTest {
                         : Optional.empty()
         );
 
-        Optional<ObservedTransaction> observed = service.observe(validCapture(1L));
+        Optional<ObservedTransaction> observed = service.observe(capture);
 
         assertTrue(observed.isPresent());
         assertEquals(

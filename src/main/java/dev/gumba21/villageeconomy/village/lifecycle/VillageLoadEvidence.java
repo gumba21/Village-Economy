@@ -25,6 +25,17 @@ public record VillageLoadEvidence(
                 || nearbyPlayerCount > 0;
     }
 
+    /**
+     * Strong evidence required to wake a persisted inactive village. Loaded
+     * chunks alone can keep an already-active village from being unloaded, but
+     * reactivation additionally requires either a loaded villager or a nearby
+     * player in those chunks.
+     */
+    public boolean demonstratesReactivation() {
+        return loadedTrackedVillagerCount > 0
+                || (relevantLoadedChunkCount > 0 && nearbyPlayerCount > 0);
+    }
+
     public static VillageLoadEvidence absent(int trackedVillagerCount) {
         return new VillageLoadEvidence(trackedVillagerCount, 0, 0, 0);
     }

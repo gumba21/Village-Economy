@@ -63,6 +63,22 @@ public final class VillageOwnershipIndex {
         return memberships.size();
     }
 
+    /**
+     * Seeds ownership only after lifecycle code has independently reactivated
+     * the village from server-side evidence.
+     */
+    public void associateLoadedVillager(
+            UUID villagerId,
+            TrackedVillage village
+    ) {
+        if (!village.isLoaded()) {
+            throw new IllegalArgumentException(
+                    "Cannot associate a villager with an unloaded village"
+            );
+        }
+        remember(villagerId, village.getId());
+    }
+
     public void clear() {
         memberships.clear();
     }

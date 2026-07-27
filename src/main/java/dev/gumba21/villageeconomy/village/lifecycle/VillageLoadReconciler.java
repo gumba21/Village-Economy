@@ -39,7 +39,10 @@ public final class VillageLoadReconciler {
         Objects.requireNonNull(evidence, "evidence");
 
         boolean previousLoaded = village.isLoaded();
-        if (detectedThisScan || evidence.demonstratesLoaded()) {
+        boolean activeEvidence = previousLoaded
+                ? evidence.demonstratesLoaded()
+                : evidence.demonstratesReactivation();
+        if (detectedThisScan || activeEvidence) {
             consecutiveMissingScans.remove(village.getId());
             boolean changed = village.updateLoadedState(true);
             return result(

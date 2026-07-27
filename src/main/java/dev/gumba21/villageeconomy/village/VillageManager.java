@@ -16,8 +16,13 @@ import dev.gumba21.villageeconomy.village.data.VillagePersistentState;
 import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadEvidence;
 import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadReconciler;
 import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadReconciliation;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageReactivationMatch;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageReactivationMatcher;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.SectionPos;
@@ -26,10 +31,12 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.LevelChunk;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -68,9 +75,12 @@ public final class VillageManager {
             new HashMap<>();
     private final VillageLoadReconciler loadReconciler =
             new VillageLoadReconciler();
+    private final VillageReactivationMatcher reactivationMatcher =
+            new VillageReactivationMatcher();
 
     private int ticksUntilScan;
     private boolean enabledLastTick;
+    private boolean reactivationProbeRequested = true;
 
     private VillageManager(MinecraftServer server, VillagePersistentState state) {
         this.server = server;
@@ -94,6 +104,11 @@ public final class VillageManager {
         ServerLifecycleEvents.SERVER_STOPPING.register(VillageManager::onServerStopping);
         ServerLifecycleEvents.SERVER_STOPPED.register(VillageManager::onServerStopped);
         ServerTickEvents.END_SERVER_TICK.register(VillageManager::onServerTick);
+        ServerEntityEvents.ENTITY_LOAD.register(VillageManager::onEntityLoaded);
+        ServerChunkEvents.CHUNK_LOAD.register(VillageManager::onChunkLoaded);
+        ServerPlayConnectionEvents.JOIN.register(
+                (handler, sender, server) -> requestReactivationProbe(server)
+        );
     }
 
     public static VillageManager get(MinecraftServer server) {
@@ -120,6 +135,36 @@ public final class VillageManager {
         VillageManager manager = instance;
         if (manager != null && manager.server == server) {
             manager.tick();
+        }
+    }
+
+    private static void onEntityLoaded(Entity entity, ServerLevel level) {
+        if (!(entity instanceof Villager villager)) {
+            return;
+        }
+        VillageManager manager = instance;
+        if (manager != null && manager.server == level.getServer()) {
+            manager.reactivateFromVillager(level, villager);
+        }
+    }
+
+    private static void onChunkLoaded(ServerLevel level, LevelChunk chunk) {
+        VillageManager manager = instance;
+        if (manager != null
+                && manager.server == level.getServer()
+                && manager.isRelevantUnloadedVillageChunk(
+                        level,
+                        chunk.getPos().x,
+                        chunk.getPos().z
+                )) {
+            manager.reactivationProbeRequested = true;
+        }
+    }
+
+    private static void requestReactivationProbe(MinecraftServer server) {
+        VillageManager manager = instance;
+        if (manager != null && manager.server == server) {
+            manager.reactivationProbeRequested = true;
         }
     }
 
@@ -155,10 +200,12 @@ public final class VillageManager {
             }
             enabledLastTick = false;
             ticksUntilScan = 0;
+            reactivationProbeRequested = false;
             return;
         }
 
         int interval = configManager.getMarketUpdateIntervalTicks();
+        int radius = configManager.getVillageDetectionRadius();
         if (!enabledLastTick) {
             ticksUntilScan = 0;
             enabledLastTick = true;
@@ -166,12 +213,18 @@ public final class VillageManager {
             ticksUntilScan = interval;
         }
 
+        if (reactivationProbeRequested && ticksUntilScan > 0) {
+            reactivationProbeRequested = false;
+            reactivatePersistedVillages(radius);
+        }
+
         if (ticksUntilScan > 0) {
             ticksUntilScan--;
             return;
         }
 
-        scan(configManager.getVillageDetectionRadius(), interval);
+        reactivationProbeRequested = false;
+        scan(radius, interval);
         ticksUntilScan = Math.max(1, interval) - 1;
     }
 
@@ -181,8 +234,7 @@ public final class VillageManager {
 
         clusters.clear();
         matchedVillageIds.clear();
-        levelsByDimension.clear();
-        loadedVillagersByDimension.values().forEach(List::clear);
+        refreshRuntimeSnapshots();
 
         VillageEconomyDebugLogger.info(
                 "Village scan started: radius={}, interval={} ticks",
@@ -190,15 +242,10 @@ public final class VillageManager {
                 interval
         );
 
-        for (ServerLevel level : server.getAllLevels()) {
-            levelsByDimension.put(level.dimension(), level);
-            List<Villager> loadedVillagers =
-                    loadedVillagersByDimension.computeIfAbsent(
-                            level.dimension(),
-                            ignored -> new ArrayList<>()
-                    );
-            level.getEntities(EntityType.VILLAGER, ACTIVE_VILLAGER, loadedVillagers);
-
+        for (Map.Entry<ResourceKey<Level>, List<Villager>> entry
+                : loadedVillagersByDimension.entrySet()) {
+            ServerLevel level = levelsByDimension.get(entry.getKey());
+            List<Villager> loadedVillagers = entry.getValue();
             for (Villager villager : loadedVillagers) {
                 BlockPos position = villager.blockPosition();
                 if (!level.isVillage(position)) {
@@ -307,6 +354,160 @@ public final class VillageManager {
         simulateMarkets(now);
     }
 
+    /**
+     * Lightweight lifecycle-only pass. It is triggered by runtime entity,
+     * chunk, and player arrival and deliberately does not run market
+     * simulation or village discovery.
+     */
+    private void reactivatePersistedVillages(int configuredRadius) {
+        refreshRuntimeSnapshots();
+
+        for (Map.Entry<ResourceKey<Level>, List<Villager>> entry
+                : loadedVillagersByDimension.entrySet()) {
+            ServerLevel level = levelsByDimension.get(entry.getKey());
+            for (Villager villager : entry.getValue()) {
+                reactivateFromVillager(level, villager, configuredRadius);
+            }
+        }
+
+        // If entity callbacks are unavailable for an already-loaded area, a
+        // relevant loaded chunk plus a nearby player is still strong evidence.
+        for (TrackedVillage village : state.getVillages()) {
+            if (village.isLoaded()) {
+                continue;
+            }
+            VillageLoadEvidence evidence = collectLoadEvidence(village);
+            if (evidence.loadedTrackedVillagerCount() > 0
+                    || evidence.relevantLoadedChunkCount() == 0
+                    || evidence.nearbyPlayerCount() == 0) {
+                continue;
+            }
+            reactivate(
+                    village,
+                    null,
+                    -1L,
+                    "relevant_chunk_loaded",
+                    evidence,
+                    1,
+                    false
+            );
+        }
+    }
+
+    private void reactivateFromVillager(
+            ServerLevel level,
+            Villager villager
+    ) {
+        VillageEconomyConfigManager configManager =
+                VillageEconomyConfigManager.getInstance();
+        if (!configManager.isVillageTrackingEnabled()) {
+            return;
+        }
+        int radius = configManager.getVillageDetectionRadius();
+        reactivateFromVillager(level, villager, radius);
+    }
+
+    private void reactivateFromVillager(
+            ServerLevel level,
+            Villager villager,
+            int configuredRadius
+    ) {
+        Optional<VillageReactivationMatch> match =
+                reactivationMatcher.matchLoadedVillager(
+                        villager.getUUID(),
+                        level.dimension(),
+                        villager.blockPosition(),
+                        state.getVillages(),
+                        configuredRadius
+                );
+        if (match.isEmpty()) {
+            return;
+        }
+        VillageReactivationMatch reactivation = match.get();
+        VillageLoadEvidence evidence = collectLoadEvidenceForLevel(
+                level,
+                reactivation.village()
+        );
+        if (evidence.loadedTrackedVillagerCount() == 0) {
+            evidence = new VillageLoadEvidence(
+                    evidence.trackedVillagerCount(),
+                    1,
+                    evidence.relevantLoadedChunkCount(),
+                    evidence.nearbyPlayerCount()
+            );
+        }
+        reactivate(
+                reactivation.village(),
+                reactivation.villagerId(),
+                reactivation.distanceSquared(),
+                "persisted_villager_loaded",
+                evidence,
+                reactivation.candidateCount(),
+                reactivation.equalDistanceTie()
+        );
+    }
+
+    private void reactivate(
+            TrackedVillage village,
+            UUID matchedVillagerId,
+            long distanceSquared,
+            String reason,
+            VillageLoadEvidence evidence,
+            int candidateCount,
+            boolean equalDistanceTie
+    ) {
+        boolean previousLoaded = village.isLoaded();
+        VillageLoadReconciliation reconciliation = loadReconciler.reconcile(
+                village,
+                false,
+                evidence
+        );
+        if (!reconciliation.changed() || !village.isLoaded()) {
+            return;
+        }
+
+        state.setDirty();
+        consecutiveMissingVillageScans.remove(village.getId());
+        if (matchedVillagerId != null) {
+            villageOwnershipIndex.associateLoadedVillager(
+                    matchedVillagerId,
+                    village
+            );
+        }
+        VillageEconomyDebugLogger.info(
+                "Village persisted reactivation: uuid={}, previous={}, new={}, reason={}, "
+                        + "matchedVillager={}, distanceBlocks={}, trackedVillagers={}, "
+                        + "loadedTrackedVillagers={}, relevantLoadedChunks={}, nearbyPlayers={}, "
+                        + "candidates={}, equalDistanceTie={}",
+                village.getId(),
+                previousLoaded,
+                village.isLoaded(),
+                reason,
+                matchedVillagerId == null ? "none" : matchedVillagerId,
+                distanceSquared < 0L ? -1.0D : Math.sqrt(distanceSquared),
+                evidence.trackedVillagerCount(),
+                evidence.loadedTrackedVillagerCount(),
+                evidence.relevantLoadedChunkCount(),
+                evidence.nearbyPlayerCount(),
+                candidateCount,
+                equalDistanceTie
+        );
+    }
+
+    private void refreshRuntimeSnapshots() {
+        levelsByDimension.clear();
+        loadedVillagersByDimension.values().forEach(List::clear);
+        for (ServerLevel level : server.getAllLevels()) {
+            levelsByDimension.put(level.dimension(), level);
+            List<Villager> loadedVillagers =
+                    loadedVillagersByDimension.computeIfAbsent(
+                            level.dimension(),
+                            ignored -> new ArrayList<>()
+                    );
+            level.getEntities(EntityType.VILLAGER, ACTIVE_VILLAGER, loadedVillagers);
+        }
+    }
+
     private void addToCluster(
             ResourceKey<Level> dimension,
             Villager villager,
@@ -391,6 +592,66 @@ public final class VillageManager {
                 countRelevantLoadedChunks(level, village),
                 nearbyPlayers
         );
+    }
+
+    private static VillageLoadEvidence collectLoadEvidenceForLevel(
+            ServerLevel level,
+            TrackedVillage village
+    ) {
+        List<Villager> villagers = new ArrayList<>();
+        level.getEntities(EntityType.VILLAGER, ACTIVE_VILLAGER, villagers);
+        int loadedTrackedVillagers = 0;
+        for (Villager villager : villagers) {
+            if (village.contains(
+                    village.getDimension(),
+                    villager.blockPosition()
+            )) {
+                loadedTrackedVillagers++;
+            }
+        }
+
+        int nearbyPlayers = 0;
+        for (var player : level.players()) {
+            if (village.contains(village.getDimension(), player.blockPosition())) {
+                nearbyPlayers++;
+            }
+        }
+        return new VillageLoadEvidence(
+                village.getVillagerCount(),
+                loadedTrackedVillagers,
+                countRelevantLoadedChunks(level, village),
+                nearbyPlayers
+        );
+    }
+
+    private boolean isRelevantUnloadedVillageChunk(
+            ServerLevel level,
+            int chunkX,
+            int chunkZ
+    ) {
+        for (TrackedVillage village : state.getVillages()) {
+            if (village.isLoaded()
+                    || !village.getDimension().equals(level.dimension())) {
+                continue;
+            }
+            BlockPos center = village.getCenter();
+            int radius = village.getDetectionRadius();
+            int minimumChunkX =
+                    SectionPos.blockToSectionCoord(center.getX() - radius);
+            int maximumChunkX =
+                    SectionPos.blockToSectionCoord(center.getX() + radius);
+            int minimumChunkZ =
+                    SectionPos.blockToSectionCoord(center.getZ() - radius);
+            int maximumChunkZ =
+                    SectionPos.blockToSectionCoord(center.getZ() + radius);
+            if (chunkX >= minimumChunkX
+                    && chunkX <= maximumChunkX
+                    && chunkZ >= minimumChunkZ
+                    && chunkZ <= maximumChunkZ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static int countRelevantLoadedChunks(
