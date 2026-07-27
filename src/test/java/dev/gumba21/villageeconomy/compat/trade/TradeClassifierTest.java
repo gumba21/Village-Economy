@@ -162,6 +162,58 @@ class TradeClassifierTest {
         assertTrue(trade.dynamicVillagerTradesOffer());
     }
 
+    @Test
+    void walletBackedPurchaseUsesAuthoritativeDirectionAndExactValue() {
+        WalletTradeClassification trade =
+                classifier.classifyWalletTransaction(
+                        TradeDirection.PLAYER_BUYS,
+                        stack(Items.BREAD, 4),
+                        4,
+                        MarketValue.ofBaseUnits(12L)
+                );
+
+        assertTrue(trade.isComplete());
+        assertEquals(TradeDirection.PLAYER_BUYS, trade.direction());
+        assertEquals(4, trade.quantity());
+        assertEquals(12L, trade.monetaryValue().orElseThrow().baseUnits());
+    }
+
+    @Test
+    void walletBackedSaleUsesAuthoritativeDirection() {
+        WalletTradeClassification trade =
+                classifier.classifyWalletTransaction(
+                        TradeDirection.PLAYER_SELLS,
+                        stack(Items.WHEAT, 20),
+                        20,
+                        MarketValue.ofBaseUnits(35L)
+                );
+
+        assertTrue(trade.isComplete());
+        assertEquals(TradeDirection.PLAYER_SELLS, trade.direction());
+    }
+
+    @Test
+    void zeroValueOrQuantityWalletTradeIsUnknown() {
+        assertEquals(
+                TradeDirection.UNKNOWN,
+                classifier.classifyWalletTransaction(
+                        TradeDirection.PLAYER_BUYS,
+                        stack(Items.BREAD, 1),
+                        0,
+                        MarketValue.ofBaseUnits(1L)
+                ).direction()
+        );
+        assertEquals(
+                TradeDirection.UNKNOWN,
+                classifier.classifyWalletTransaction(
+                        TradeDirection.PLAYER_SELLS,
+                        stack(Items.WHEAT, 1),
+                        1,
+                        MarketValue.zero()
+                ).direction()
+        );
+    }
+
     private ObservedTrade classify(
             ItemStack first,
             ItemStack second,

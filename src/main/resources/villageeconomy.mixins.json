@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.gumba21.villageeconomy.compat.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "tradeoverhaul.TradeOverhaulTradeObserverMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

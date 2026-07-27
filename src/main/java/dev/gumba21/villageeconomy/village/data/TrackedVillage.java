@@ -106,8 +106,7 @@ public final class TrackedVillage {
                 || lastSeenTimestamp != seenTimestamp
                 || villagerCount != newVillagerCount
                 || workstationCount != newWorkstationCount
-                || !professionCounts.equals(newProfessionCounts)
-                || !loaded;
+                || !professionCounts.equals(newProfessionCounts);
 
         center = immutableCenter;
         detectionRadius = newDetectionRadius;
@@ -115,7 +114,6 @@ public final class TrackedVillage {
         villagerCount = Math.max(0, newVillagerCount);
         workstationCount = Math.max(0, newWorkstationCount);
         replaceProfessionCounts(newProfessionCounts);
-        loaded = true;
         return changed;
     }
 

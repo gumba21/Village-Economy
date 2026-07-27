@@ -5,6 +5,8 @@ import dev.gumba21.villageeconomy.market.data.MarketState;
 import dev.gumba21.villageeconomy.market.registry.DefaultTradeGoods;
 import dev.gumba21.villageeconomy.village.data.TrackedVillage;
 import dev.gumba21.villageeconomy.village.data.VillagePersistentState;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadEvidence;
+import dev.gumba21.villageeconomy.village.lifecycle.VillageLoadReconciler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -80,6 +82,30 @@ class MarketManagerTest {
         assertTrue(manager.removeMarket(villageId));
         assertFalse(manager.removeMarket(villageId));
         assertFalse(manager.hasMarket(villageId));
+    }
+
+    @Test
+    void loadedStateLifecycleDoesNotChangeMarketOwnership() {
+        VillagePersistentState state = new VillagePersistentState();
+        UUID villageId = addVillage(state, 0);
+        TrackedVillage village = state.getVillages().iterator().next();
+        MarketManager manager = new MarketManager(state);
+        MarketState market = manager.createMarket(villageId);
+        VillageLoadReconciler reconciler = new VillageLoadReconciler();
+        VillageLoadEvidence absent =
+                VillageLoadEvidence.absent(village.getVillagerCount());
+
+        reconciler.reconcile(village, false, absent);
+        reconciler.reconcile(village, false, absent);
+        reconciler.reconcile(
+                village,
+                false,
+                new VillageLoadEvidence(village.getVillagerCount(), 1, 1, 0)
+        );
+
+        assertTrue(village.isLoaded());
+        assertSame(market, manager.getMarket(villageId).orElseThrow());
+        assertEquals(1, state.marketSize());
     }
 
     private UUID addVillage(VillagePersistentState state, int x) {
